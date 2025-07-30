@@ -1,4 +1,4 @@
-# # Project: Catchery
+# Project: Catchery
 
 General Instructions:
 
