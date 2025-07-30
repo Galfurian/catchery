@@ -1,4 +1,4 @@
-Project: My Python Project
+Project: Catchery
 
 General Instructions:
 
@@ -32,7 +32,7 @@ Project Structure:
 ```bash
 project_root/
 ├── src/
-│ └── my_package/
+│ └── catchery/
 ├── tests/
 ├── pyproject.toml
 ├── requirements.txt
@@ -41,13 +41,6 @@ project_root/
 
 - Keep utility functions in `utils.py` or separate helpers modules.
 - Do not mix test code with production code.
-
-Specific Component: `src/core/config.py`
-
-- This file is responsible for loading and validating application configuration.
-- Always validate user input and configuration values.
-- Raise `ValueError` or custom exceptions on invalid config.
-- Include type hints and unit tests for any new configuration features.
 
 Regarding Dependencies:
 
