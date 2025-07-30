@@ -1,4 +1,4 @@
-Project: Catchery
+# # Project: Catchery
 
 General Instructions:
 
@@ -66,9 +66,9 @@ Testing and Verification:
 - Name test files with `test_*.py`.
 - Each test function should cover one logical case.
 - After making changes, always run:
-    - `pytest` for unit and integration tests.
-    - `mypy src/catchery/` for type checking.
-    - `ruff check src/catchery/` for linting (if `ruff` is installed and configured).
+  - `pytest` for unit and integration tests.
+  - `mypy src/catchery/` for type checking.
+  - `ruff check src/catchery/` for linting (if `ruff` is installed and configured).
 - Use `coverage` or `pytest-cov` to measure test coverage.
 
 Commits:
