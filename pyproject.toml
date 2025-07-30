@@ -8,7 +8,7 @@ version = "0.0.1"
 description = "A python error handler. Catch exceptions and handle them gracefully."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT License"}
+license = "MIT"
 keywords = ["error-handling", "exceptions", "python"]
 authors = [
   {name = "Enrico Fraccaroli", email = "enrico.fraccaroli@univr.it"},
@@ -16,11 +16,7 @@ authors = [
 maintainers = [
   {name = "Enrico Fraccaroli", email = "enrico.fraccaroli@univr.it"},
 ]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
+
 dependencies = [
     # Add your project's runtime dependencies here, e.g.,
     # "requests>=2.20.0",
