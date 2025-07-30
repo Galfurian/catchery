@@ -75,7 +75,7 @@ Commits:
 
 - Use the Conventional Commits format: `<type>(scope): short summary`
 Examples:
-- `feat(config): support dynamic environment loading`
+- `feature(config): support dynamic environment loading`
 - `fix(core): handle missing config file gracefully`
 - `test(utils): add unit tests for retry logic`
 
