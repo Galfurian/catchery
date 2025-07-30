@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Union
 
 from .error_handler import ERROR_HANDLER, ErrorSeverity, log_warning
 
@@ -120,6 +120,186 @@ def validate_type(
 # =============================================================================
 # CONVERSION FUNCTIONS
 # =============================================================================
+
+
+def ensure_value(
+    value: Any,
+    name: str,
+    expected_type: Union[Any, tuple[Any, ...]],
+    default: Any | None = None,
+    context: Dict[str, Any] | None = None,
+    allow_none: bool = False,
+    validator: Callable[[Any], bool] | None = None,
+    converter: Callable[[Any], Any] | None = None,
+) -> Any | None:
+    """
+    Ensures a value is of the specified type, converting or using a default if necessary.
+
+    This function attempts to validate and/or convert the provided `value` to `expected_type`.
+    If `value` is None and `allow_none` is False, it returns `default`.
+    If `value` is not of `expected_type` and a `converter` is provided, it attempts conversion.
+    If conversion fails or `value` is still not of `expected_type`, it returns `default`.
+    If a `validator` is provided, the value (or converted value) must pass the validation.
+    Warnings are logged for invalid values or failed conversions.
+
+    Args:
+        value: The value to be ensured.
+        name: The human-readable name for the value, used in log messages.
+        expected_type: The expected type(s) (e.g., str, int, (int, float)).
+        default: The default value to return if `value` is invalid or cannot be converted.
+        context: An optional dictionary of additional context for logging.
+        allow_none: If True, `None` is considered a valid value if it matches `expected_type`
+                    or if `None` is explicitly in `expected_type`. If False, `None` is
+                    treated as an invalid value unless `default` is `None`.
+        validator: An optional callable that takes the value and returns True if valid, False otherwise.
+        converter: An optional callable that takes the value and attempts to convert it to `expected_type`.
+
+    Returns:
+        The validated and/or converted value, or the `default` value.
+    """
+    # Get the type name.
+    type_name = expected_type.__name__ if isinstance(expected_type, type) else expected_type
+    # Make sure the context is valid.
+    ctx = {
+        **(context or {}),
+        "name": name,
+        "value": value,
+        "actual": type(value).__name__,
+        "expected": type_name,
+    }
+    # Store the value.
+    processed_value = value
+
+    # Handle None value.
+    if value is None:
+        if allow_none:
+            # Ensure expected_type is a tuple for consistent checking
+            expected_type_tuple = (
+                expected_type if isinstance(expected_type, tuple) else (expected_type,)
+            )
+            if None in expected_type_tuple:
+                return None
+            log_warning(
+                f"'{name}' is None, but None is not allowed for expected type(s) {expected_type}. Using default.",
+                ctx,
+            )
+        else:
+            log_warning(
+                f"'{name}' is None and 'allow_none' is False. Using default.", ctx
+            )
+        return default
+
+    # Attempt conversion if a converter is provided or for common types.
+    if not isinstance(processed_value, expected_type):
+        log_warning(
+            f"'{name}' is not of expected type(s) {type_name}. Attempting conversion.",
+            ctx,
+        )
+        if converter:
+            try:
+                processed_value = converter(value)
+                if not isinstance(processed_value, expected_type):
+                    log_warning(
+                        f"Converter for '{name}' returned wrong type. Expected {type_name}, got {type(processed_value).__name__}. Using default.",
+                        ctx,
+                    )
+                    return default
+            except Exception as e:
+                log_warning(
+                    f"Conversion of '{name}' failed: {e}. Using default.",
+                    {
+                        **ctx,
+                        "error": str(e),
+                    },
+                )
+                return default
+        elif isinstance(expected_type, tuple):
+            # Try converting to one of the types in the tuple
+            converted_successfully = False
+            for t in expected_type:
+                try:
+                    if t is str and not isinstance(value, str):
+                        processed_value = str(value)
+                        converted_successfully = True
+                        break
+                    elif t is int and not isinstance(value, int):
+                        processed_value = int(value)
+                        converted_successfully = True
+                        break
+                    elif t is float and not isinstance(value, float):
+                        processed_value = float(value)
+                        converted_successfully = True
+                        break
+                except (ValueError, TypeError):
+                    continue  # Try next type in tuple
+
+            if not converted_successfully:
+                log_warning(
+                    f"No converter provided and cannot perform default conversion for '{name}'. Using default.",
+                    ctx,
+                )
+                return default
+        else:  # For single expected_type
+            if expected_type is str and not isinstance(value, str):
+                try:
+                    processed_value = str(value)
+                except Exception as e:
+                    log_warning(
+                        f"Default string conversion of '{name}' failed: {e}. Using default.",
+                        {
+                            **ctx,
+                            "error": str(e),
+                        },
+                    )
+                    return default
+            elif expected_type is int and not isinstance(value, int):
+                try:
+                    processed_value = int(value)
+                except Exception as e:
+                    log_warning(
+                        f"Default integer conversion of '{name}' failed: {e}. Using default.",
+                        {
+                            **ctx,
+                            "error": str(e),
+                        },
+                    )
+                    return default
+            elif expected_type is float and not isinstance(value, float):
+                try:
+                    processed_value = float(value)
+                except Exception as e:
+                    log_warning(
+                        f"Default float conversion of '{name}' failed: {e}. Using default.",
+                        {
+                            **ctx,
+                            "error": str(e),
+                        },
+                    )
+                    return default
+            else:
+                log_warning(
+                    f"No converter provided and cannot perform default conversion for '{name}'. Using default.",
+                    ctx,
+                )
+                return default
+
+    # Apply validator if provided
+    if validator:
+        try:
+            if not validator(processed_value):
+                log_warning(f"'{name}' failed validation. Using default.", ctx)
+                return default
+        except Exception as e:
+            log_warning(
+                f"Validator for '{name}' raised an exception: {e}. Using default.",
+                {
+                    **ctx,
+                    "error": str(e),
+                },
+            )
+            return default
+
+    return processed_value
 
 
 def ensure_string(
