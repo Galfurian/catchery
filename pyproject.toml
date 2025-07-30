@@ -11,10 +11,10 @@ requires-python = ">=3.11"
 license = {text = "MIT License"}
 keywords = ["error-handling", "exceptions", "python"]
 authors = [
-  {name = "<FILL: Your Name>", email = "<FILL: your.email@example.com>"},
+  {name = "Enrico Fraccaroli", email = "enrico.fraccaroli@univr.it"},
 ]
 maintainers = [
-  {name = "<FILL: Your Name>", email = "<FILL: your.email@example.com>"},
+  {name = "Enrico Fraccaroli", email = "enrico.fraccaroli@univr.it"},
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -27,9 +27,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "<FILL: https://github.com/yourusername/catchery>"
-Repository = "<FILL: https://github.com/yourusername/catchery>"
-"Bug Tracker" = "<FILL: https://github.com/yourusername/catchery/issues>"
+Homepage = "https://github.com/Galfurian/catchery"
+Repository = "https://github.com/Galfurian/catchery"
+"Bug Tracker" = "https://github.com/Galfurian/catchery/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
