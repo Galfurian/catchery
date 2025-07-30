@@ -5,6 +5,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "catchery"
 version = "0.0.1"
+description = "A python error handler. Catch exceptions and handle them gracefully."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT License"}
+keywords = ["error-handling", "exceptions", "python"]
+authors = [
+  {name = "<FILL: Your Name>", email = "<FILL: your.email@example.com>"},
+]
+maintainers = [
+  {name = "<FILL: Your Name>", email = "<FILL: your.email@example.com>"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # Add your project's runtime dependencies here, e.g.,
+    # "requests>=2.20.0",
+]
+
+[project.urls]
+Homepage = "<FILL: https://github.com/yourusername/catchery>"
+Repository = "<FILL: https://github.com/yourusername/catchery>"
+"Bug Tracker" = "<FILL: https://github.com/yourusername/catchery/issues>"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -23,4 +48,3 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-
