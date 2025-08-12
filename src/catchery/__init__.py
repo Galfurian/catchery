@@ -1,3 +1,7 @@
+"""
+Catchery is a Python library for building robust and scalable applications.
+"""
+
 from .error_handler import (
     AppError,
     ErrorHandler,

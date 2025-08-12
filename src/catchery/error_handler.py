@@ -2,9 +2,9 @@
 Centralized error handling and logging system.
 """
 
-# =============================
+# =============================================================================
 # Imports & Type Aliases
-# =============================
+# =============================================================================
 
 import inspect
 import json
@@ -19,9 +19,9 @@ from typing import Any, Callable, Deque, Dict, List, Protocol, TypeVar
 T = TypeVar("T")
 
 
-# =============================
+# =============================================================================
 # Core Enums & Data Classes
-# =============================
+# =============================================================================
 
 
 def _find_project_root() -> Path:
@@ -70,13 +70,16 @@ def _get_caller_info(skip_frames: int = 2) -> tuple[str, int]:
             rel_path = file_path.relative_to(project_root)
             return str(rel_path), line_number
         except ValueError:
+            # file_path is not under project_root.
             return file_path.name, line_number
     except Exception:
         return "unknown", 0
 
 
 class ErrorSeverity(Enum):
-    """Enumeration of error severity levels for the error handling system."""
+    """
+    Enumeration of error severity levels for the error handling system.
+    """
 
     LOW = "low"
     MEDIUM = "medium"
@@ -86,8 +89,10 @@ class ErrorSeverity(Enum):
 
 @dataclass
 class AppError:
-    """Represents an application error with severity, context, and optional
-    exception information."""
+    """
+    Represents an application error with severity, context, and optional
+    exception information.
+    """
 
     message: str
     severity: ErrorSeverity
@@ -143,25 +148,16 @@ class ErrorHandler:
         - Exception chaining
         - Context manager for contextual data (thread-local)
         - Testing utilities (capture errors)
-
-    Usage Example:
-        >>> handler = ErrorHandler(error_history_maxlen=100)
-        >>> handler.handle("Something happened", ErrorSeverity.LOW)
-        >>> with handler.context(user_id=123):
-        ...     handler.handle("User error", ErrorSeverity.HIGH)
-        >>> with handler.capture_errors() as errors:
-        ...     handler.handle("Test error", ErrorSeverity.MEDIUM)
-        >>> print(errors)
     """
 
     _thread_local = threading.local()
 
-    class context:
+    class Context:
         """
         Context manager for adding contextual data to all errors in this thread.
 
         Usage:
-            with handler.context(user_id=123):
+            with handler.Context(user_id=123):
                 handler.handle(...)
         """
 
@@ -170,7 +166,8 @@ class ErrorHandler:
             Initializes the context manager with the given context data.
 
             Args:
-                **context: Arbitrary keyword arguments representing the context data.
+                **context: Arbitrary keyword arguments representing the context
+                data.
             """
             self.context = context
 
@@ -198,14 +195,15 @@ class ErrorHandler:
         Returns:
             A dictionary containing the thread-local context.
         """
-        return getattr(self._thread_local, "context", {})
+        context = getattr(self._thread_local, "context", None)
+        return context if context is not None else {}
 
-    class capture_errors:
+    class CaptureErrors:
         """
         Context manager to capture errors handled during the block.
 
         Usage:
-            with handler.capture_errors() as errors:
+            with handler.CaptureErrors(handler) as errors:
                 handler.handle(...)
             # errors is a list of AppError
         """
@@ -265,9 +263,9 @@ class ErrorHandler:
         Initialize the ErrorHandler.
 
         Args:
-            logger: Optional custom logger instance.
-            error_history_maxlen: Max number of errors to keep in history.
-            use_json_logging: If True, logs in JSON format.
+            logger: Optional custom logger instance. error_history_maxlen: Max
+            number of errors to keep in history. use_json_logging: If True, logs
+            in JSON format.
         """
         self.logger: logging.Logger = logger or logging.getLogger("app_errors")
         self.error_history: Deque[AppError] = deque(maxlen=error_history_maxlen)
@@ -321,15 +319,15 @@ class ErrorHandler:
         list of attributes.
 
         Usage:
-            handle(AppError(...))
-            handle("error", severity, context, exception, ...)
+            handle(AppError(...)) handle("error", severity, context, exception,
+            ...)
 
         Args:
             error: Either an AppError instance or the error error string.
             severity: The severity level of the error (required if not passing
                       AppError).
-            context: An optional dictionary of contextual data.
-            exception: An optional exception object associated with the error.
+            context: An optional dictionary of contextual data. exception: An
+            optional exception object associated with the error.
             raise_exception: If True, re-raises the `exception` after handling.
             chain_exception: An optional exception to chain with `exception`.
         """
@@ -354,9 +352,8 @@ class ErrorHandler:
         Create an AppError object with merged context and caller info.
 
         Args:
-            message: The primary error message.
-            severity: The severity level of the error.
-            context: An optional dictionary of contextual data.
+            message: The primary error message. severity: The severity level of
+            the error. context: An optional dictionary of contextual data.
             exception: An optional exception object.
 
         Returns:
@@ -400,7 +397,8 @@ class ErrorHandler:
             severity: The severity level of the error.
 
         Returns:
-            The corresponding logger method (e.g., `logger.info`, `logger.error`).
+            The corresponding logger method (e.g., `logger.info`,
+            `logger.error`).
         """
         return {
             ErrorSeverity.LOW: self.logger.info,
@@ -439,18 +437,22 @@ class ErrorHandler:
             log_method(formatted_message, **log_kwargs)
 
     def _raise_if_needed(
-        self, error: AppError, raise_exception: bool, chain_exception: Exception | None
+        self,
+        error: AppError,
+        raise_exception: bool,
+        chain_exception: Exception | None,
     ) -> None:
         """
         Raise an exception if requested, with optional chaining.
 
         Args:
             error: The `AppError` containing the exception to potentially raise.
-            raise_exception: A boolean indicating whether to raise the exception.
-            chain_exception: An optional exception to chain from.
+            raise_exception: A boolean indicating whether to raise the
+            exception. chain_exception: An optional exception to chain from.
 
         Raises:
-            Exception: The exception from the `error` object if `raise_exception`
+            Exception: The exception from the `error` object if
+            `raise_exception`
                        is True.
         """
         if not raise_exception or not error.exception:
@@ -472,23 +474,26 @@ class ErrorHandler:
         Safely executes an operation, handling any exceptions that occur.
 
         If an exception is raised during the operation, it is caught, logged,
-        and the specified default value is returned. The exception is not re-raised
-        unless `raise_exception` is explicitly set to True within the `handle` method.
+        and the specified default value is returned. The exception is not
+        re-raised unless `raise_exception` is explicitly set to True within the
+        `handle` method.
 
         Args:
-            operation: A callable (function or lambda) representing the operation
-                       to execute. It should take no arguments and return a value
-                       of type T.
+            operation: A callable (function or lambda) representing the
+            operation
+                       to execute. It should take no arguments and return a
+                       value of type T.
             default: The default value to return if an exception occurs during
                      the operation.
             error_message: A descriptive message for the error, used in logging.
-            severity: The severity level of the error if one occurs (default: MEDIUM).
-            context: An optional dictionary of additional context to include
+            severity: The severity level of the error if one occurs (default:
+            MEDIUM). context: An optional dictionary of additional context to
+            include
                      with the error log.
 
         Returns:
-            The result of the `operation` if successful, or the `default` value if an
-            exception occurs.
+            The result of the `operation` if successful, or the `default` value
+            if an exception occurs.
         """
         try:
             return operation()
@@ -519,9 +524,9 @@ def safe_operation(
     Decorator for safe operation execution.
 
     Args:
-        default_value (Any): Default value to return on error.
-        error_message (str): Error message prefix for logging.
-        severity (ErrorSeverity): Severity level for errors.
+        default_value (Any): Default value to return on error. error_message
+        (str): Error message prefix for logging. severity (ErrorSeverity):
+        Severity level for errors.
 
     Returns:
         Callable: The decorator function.
@@ -531,7 +536,10 @@ def safe_operation(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Wrapper function that executes the decorated function safely."""
             return ERROR_HANDLER.safe_execute(
-                lambda: func(*args, **kwargs), default_value, error_message, severity
+                lambda: func(*args, **kwargs),
+                default_value,
+                error_message,
+                severity,
             )
 
         return wrapper
@@ -556,9 +564,9 @@ def log_info(
 
     Args:
         message: The primary message describing the informational event.
-        context: An optional dictionary of additional context to include with the log.
-        exception: An optional exception object to include with the log.
-        raise_exception: If True, re-raises the `exception` after handling.
+        context: An optional dictionary of additional context to include with
+        the log. exception: An optional exception object to include with the
+        log. raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
     """
     ERROR_HANDLER.handle(
@@ -582,8 +590,8 @@ def log_warning(
     Logs a warning-level message using the global error handler.
 
     Args:
-        message: The primary message describing the warning event.
-        context: An optional dictionary of additional context to include with the log.
+        message: The primary message describing the warning event. context: An
+        optional dictionary of additional context to include with the log.
         exception: An optional exception object to include with the log.
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
@@ -609,8 +617,8 @@ def log_error(
     Logs an error-level message using the global error handler.
 
     Args:
-        message: The primary message describing the error event.
-        context: An optional dictionary of additional context to include with the log.
+        message: The primary message describing the error event. context: An
+        optional dictionary of additional context to include with the log.
         exception: An optional exception object to include with the log.
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
@@ -636,8 +644,8 @@ def log_critical(
     Logs a critical-level message using the global error handler.
 
     Args:
-        message: The primary message describing the critical event.
-        context: An optional dictionary of additional context to include with the log.
+        message: The primary message describing the critical event. context: An
+        optional dictionary of additional context to include with the log.
         exception: An optional exception object to include with the log.
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.

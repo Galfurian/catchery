@@ -52,7 +52,7 @@ def test_callbacks(handler: ErrorHandler) -> None:
 
 def test_context_manager(handler: ErrorHandler) -> None:
     """Tests that the context manager correctly adds contextual data."""
-    with handler.context(user_id=42):
+    with handler.Context(user_id=42):
         handler.handle("With context", ErrorSeverity.LOW)
     last = handler.error_history[-1]
     assert last.context.get("user_id") == 42
@@ -60,7 +60,7 @@ def test_context_manager(handler: ErrorHandler) -> None:
 
 def test_capture_errors(handler: ErrorHandler) -> None:
     """Tests the capture_errors context manager."""
-    with handler.capture_errors(handler) as errors:
+    with handler.CaptureErrors(handler) as errors:
         handler.handle("Captured", ErrorSeverity.LOW)
     assert errors and errors[0].message == "Captured"
 

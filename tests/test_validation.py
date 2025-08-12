@@ -34,14 +34,14 @@ def test_ensure_value_none_value_allow_none_false_with_default(mock_log_warning)
     )
     assert result == "default_str"
     mock_log_warning.assert_called_once()
-    assert "is None and 'allow_none' is False" in mock_log_warning.call_args[0][0]
+    assert "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default." in mock_log_warning.call_args[0][0]
 
 
 def test_ensure_value_none_value_allow_none_false_no_default(mock_log_warning):
     result = ensure_value(None, "test_none", str, allow_none=False)
     assert result is None  # Default is None if not provided
     mock_log_warning.assert_called_once()
-    assert "is None and 'allow_none' is False" in mock_log_warning.call_args[0][0]
+    assert "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default." in mock_log_warning.call_args[0][0]
 
 
 # --- Type Conversion Tests (Default Converters) ---
@@ -227,7 +227,7 @@ def test_ensure_value_none_value_allow_none_true_but_not_expected_type(
     assert result == 100
     mock_log_warning.assert_called_once()
     assert (
-        "is None, but None is not allowed for expected type(s) <class 'int'>. Using default."
+        "'test_none' is None and not allowed for expected type(s) <class 'int'>. Using default."
         in mock_log_warning.call_args[0][0]
     )
 
