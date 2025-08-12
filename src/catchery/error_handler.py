@@ -14,7 +14,7 @@ from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Deque, Dict, List, TypeVar
+from typing import Any, Callable, Deque, Dict, List, Protocol, TypeVar
 
 T = TypeVar("T")
 
@@ -95,6 +95,10 @@ class AppError:
     exception: Exception | None = None
 
 
+class ErrorCallback(Protocol):
+    def __call__(self, error: AppError) -> None: ...
+
+
 class JsonFormatter(logging.Formatter):
     """Custom JSON formatter for logging records."""
 
@@ -108,7 +112,7 @@ class JsonFormatter(logging.Formatter):
         Returns:
             A JSON string representation of the log record.
         """
-        log_record = {
+        log_record: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
             "message": record.getMessage(),
@@ -187,14 +191,14 @@ class ErrorHandler:
             """
             ErrorHandler._thread_local.context = None
 
-    def _get_thread_context(self) -> dict:
+    def _get_thread_context(self) -> dict[str, Any]:
         """
         Retrieves the thread-local context dictionary.
 
         Returns:
             A dictionary containing the thread-local context.
         """
-        return getattr(self._thread_local, "context", {}) or {}
+        return getattr(self._thread_local, "context", {})
 
     class capture_errors:
         """
@@ -213,11 +217,11 @@ class ErrorHandler:
             Args:
                 handler: The ErrorHandler instance to capture errors from.
             """
-            self.handler = handler
-            self._orig_callbacks = None
+            self.handler: ErrorHandler = handler
+            self._orig_callbacks: List[ErrorCallback] | None = None
             self.captured: List[AppError] = []
 
-        def _cb(self, error: AppError) -> None:
+        def _callback(self, error: AppError) -> None:
             """
             Callback function to append captured errors to the list.
 
@@ -234,7 +238,7 @@ class ErrorHandler:
                 A list that will contain the captured AppError instances.
             """
             self._orig_callbacks = list(self.handler._callbacks)
-            self.handler.register_callback(self._cb)
+            self.handler.register_callback(self._callback)
             return self.captured
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -268,7 +272,7 @@ class ErrorHandler:
         self.logger: logging.Logger = logger or logging.getLogger("app_errors")
         self.error_history: Deque[AppError] = deque(maxlen=error_history_maxlen)
         self._lock = threading.Lock()
-        self._callbacks: List[Callable[[AppError], None]] = []
+        self._callbacks: List[ErrorCallback] = []
         self.use_json_logging = use_json_logging
 
         # Set up the formatter based on the initial use_json_logging value.
@@ -299,7 +303,7 @@ class ErrorHandler:
         self.logger.addHandler(handler)
         self.use_json_logging = enable
 
-    def register_callback(self, callback: Callable[[AppError], None]) -> None:
+    def register_callback(self, callback: ErrorCallback) -> None:
         """Register a callback to be called on every error."""
         self._callbacks.append(callback)
 
@@ -359,7 +363,7 @@ class ErrorHandler:
             An `AppError` instance fully populated with error details.
         """
         file_path, line_number = _get_caller_info(skip_frames=4)
-        merged_context = {
+        merged_context: dict[str, Any] = {
             **self._get_thread_context(),
             **(context or {}),
             "location": f"{file_path}:{line_number}",
@@ -420,7 +424,7 @@ class ErrorHandler:
             log_kwargs["exc_info"] = error.exception
 
         if self.use_json_logging:
-            log_record = {
+            log_record: dict[str, Any] = {
                 "severity": error.severity.value,
                 "message": error.message,
                 "context": error.context,
@@ -510,7 +514,7 @@ def safe_operation(
     default_value: Any = None,
     error_message: str = "Operation failed",
     severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-) -> Callable:
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for safe operation execution.
 
@@ -523,8 +527,8 @@ def safe_operation(
         Callable: The decorator function.
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        def wrapper(*args, **kwargs) -> T:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Wrapper function that executes the decorated function safely."""
             return ERROR_HANDLER.safe_execute(
                 lambda: func(*args, **kwargs), default_value, error_message, severity
