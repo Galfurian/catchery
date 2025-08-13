@@ -7,6 +7,39 @@ from typing import Any, Callable, Dict, Union
 from .error_handler import ERROR_HANDLER, ErrorSeverity, log_warning
 
 # =============================================================================
+# SUPPORT FUNCTIONS
+# =============================================================================
+
+
+def _attempt_default_conversion(
+    value: Any, expected_type: Any, name: str, ctx: dict[str, Any]
+) -> Any | None:
+    """
+    Attempts to perform a default conversion for common types (str, int, float).
+    Logs a warning if conversion fails.
+    """
+    try:
+        if expected_type is str and not isinstance(value, str):
+            return str(value)
+        elif expected_type is int and not isinstance(value, int):
+            return int(value)
+        elif expected_type is float and not isinstance(value, float):
+            return float(value)
+        else:
+            return None  # No default conversion possible for this type
+    except (ValueError, TypeError) as e:
+        log_warning(
+            f"Default conversion of '{name}' to {expected_type.__name__} failed: {e}. "
+            f"Using default.",
+            {
+                **ctx,
+                "error": str(e),
+            },
+        )
+        return None
+
+
+# =============================================================================
 # VALIDATION FUNCTIONS
 # =============================================================================
 
@@ -224,77 +257,23 @@ def ensure_value(
                 return default
         elif isinstance(expected_type, tuple):
             # Try converting to one of the types in the tuple
-            converted_successfully = False
             for t in expected_type:
-                try:
-                    if t is str and not isinstance(value, str):
-                        processed_value = str(value)
-                        converted_successfully = True
-                        break
-                    elif t is int and not isinstance(value, int):
-                        processed_value = int(value)
-                        converted_successfully = True
-                        break
-                    elif t is float and not isinstance(value, float):
-                        processed_value = float(value)
-                        converted_successfully = True
-                        break
-                except (ValueError, TypeError):
-                    continue  # Try next type in tuple
-
-            if not converted_successfully:
+                processed_value = _attempt_default_conversion(value, t, name, ctx)
+                if processed_value is not None:
+                    break
+            if processed_value is None:
                 log_warning(
                     f"No converter provided and cannot perform default conversion "
                     f"for '{name}'. Using default.",
                     ctx,
                 )
                 return default
-        else:  # For single expected_type
-            if expected_type is str and not isinstance(value, str):
-                try:
-                    processed_value = str(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default string conversion of '{name}' failed: {e}. "
-                        f"Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            elif expected_type is int and not isinstance(value, int):
-                try:
-                    processed_value = int(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default integer conversion of '{name}' failed: {e}. "
-                        f"Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            elif expected_type is float and not isinstance(value, float):
-                try:
-                    processed_value = float(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default float conversion of '{name}' failed: {e}. "
-                        f"Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            else:
-                log_warning(
-                    f"No converter provided and cannot perform default conversion "
-                    f"for '{name}'. Using default.",
-                    ctx,
-                )
+        else:
+            # For single expected_type.
+            processed_value = _attempt_default_conversion(
+                value, expected_type, name, ctx
+            )
+            if not processed_value:
                 return default
 
     # Apply validator if provided
@@ -460,29 +439,15 @@ def ensure_int_in_range(
     return value
 
 
-# Use a helper function for safe type conversion
-def _safe_convert(value: Any, target_type: type) -> Any:
-    try:
-        if target_type is str:
-            return str(value) if value is not None else ""
-        elif target_type is int:
-            return int(value)
-        elif target_type is float:
-            return float(value)
-        else:
-            return None
-    except (ValueError, TypeError):
-        return None
-
-
 def ensure_list_of_type(
     values: list[Any] | None,
     name: str,
-    expected_type: type,
+    expected_type: Union[Any, tuple[Any, ...]],
     default: list[Any] | None = None,
-    converter: Callable[[Any], Any] | None = None,
+    context: Dict[str, Any] | None = None,
+    allow_none: bool = False,
     validator: Callable[[Any], bool] | None = None,
-    context: dict[str, Any] | None = None,
+    converter: Callable[[Any], Any] | None = None,
 ) -> list[Any]:
     """
     Ensures values is a list containing items of a specified type, correcting if
@@ -497,16 +462,18 @@ def ensure_list_of_type(
 
     Args:
         values: The list of values to validate, expected to be a list.
-        expected_type: The `type` that all items in the list should conform to.
         name: The name of the parameter being processed, used in log messages.
+        expected_type: The `type` that all items in the list should conform to.
         default: The default list to return if `values` is `None` or not a list.
-        Defaults to an empty list. converter: An optional callable that takes an
-        item and attempts to convert it to `expected_type`. If conversion fails
-        or returns a wrong type, the item is skipped. validator: An optional
-        callable that takes an item of `expected_type` and returns returns
-        `True` if the item is valid, `False` otherwise. Invalid items are
-        skipped. context: An optional dictionary of additional context for
-        logging.
+            Defaults to an empty list.
+        context: An optional dictionary of additional context for
+            logging.
+        allow_none: If `True`, `None` values are allowed in the list.
+        validator: An optional callable that takes an item of `expected_type`
+            and returns `True` if the item is valid, `False` otherwise.
+        converter: An optional callable that takes an item and attempts to
+            convert it to `expected_type`. If conversion fails or returns a
+            wrong type, the item is skipped.
 
     Returns:
         A new list containing only the valid and/or converted items of
@@ -514,9 +481,6 @@ def ensure_list_of_type(
     """
     if default is None:
         default = []
-
-    if values is None:
-        return default
 
     if not isinstance(values, list):
         log_warning(
@@ -530,136 +494,61 @@ def ensure_list_of_type(
         )
         return default
 
+    # Get the type name of values.
+    values_type_name = values.__class__.__name__ if isinstance(values, type) else values
+
+    # Get the type name.
+    expected_type_name = (
+        expected_type.__name__ if isinstance(expected_type, type) else expected_type
+    )
+
+    # Make sure the context is valid.
+    ctx: dict[str, Any] = {
+        **(context or {}),
+        "name": name,
+        "values": values,
+        "actual": values_type_name,
+        "expected": expected_type_name,
+    }
+
     # Ensure all items are of the expected type
     cleaned_list: list[Any] = []
-    had_invalid_items = False
 
     for i, item in enumerate(values):
         if isinstance(item, expected_type):
             # Item is correct type, now validate if validator is provided
             if validator and not validator(item):
-                had_invalid_items = True
                 log_warning(
                     f"{name}[{i}] failed validation, " f"skipping item: {item}",
-                    {
-                        **(context or {}),
-                        "name": name,
-                        "index": i,
-                        "item": item,
-                        "expected_type": expected_type.__name__,
-                    },
+                    ctx,
                 )
-                continue  # Skip invalid items
+                # Skip invalid items
+                continue
             else:
                 cleaned_list.append(item)
         else:
-            # Item is wrong type, try to convert
-            had_invalid_items = True
-            if converter:
-                try:
-                    converted_item = converter(item)
-                    if isinstance(converted_item, expected_type):
-                        # Validate converted item if validator is provided
-                        if validator and not validator(converted_item):
-                            log_warning(
-                                f"{name}[{i}] converted item failed validation, "
-                                f"skipping: {converted_item}",
-                                {
-                                    **(context or {}),
-                                    "name": name,
-                                    "index": i,
-                                    "original": item,
-                                    "converted": converted_item,
-                                    "expected_type": expected_type.__name__,
-                                },
-                            )
-                            continue
-                        cleaned_list.append(converted_item)
-                    else:
-                        log_warning(
-                            f"{name}[{i}] converter returned wrong type, "
-                            f"skipping: {item}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "item": item,
-                                "expected_type": expected_type.__name__,
-                                "converter_result_type": type(converted_item).__name__,
-                            },
-                        )
-                except Exception as e:
-                    log_warning(
-                        f"{name}[{i}] conversion failed, skipping item: {item}",
-                        {
-                            **(context or {}),
-                            "name": name,
-                            "index": i,
-                            "item": item,
-                            "error": str(e),
-                        },
-                    )
+            item_ctx: dict[str, Any] = {
+                **ctx,
+                "index": i,
+                "item": item,
+            }
+            converted = ensure_value(
+                value=item,
+                name=f"{name}[{i}]",
+                expected_type=expected_type,
+                default=None,
+                context=item_ctx,
+                allow_none=allow_none,
+                converter=converter,
+                validator=validator,
+            )
+            if converted is not None or allow_none:
+                cleaned_list.append(converted)
             else:
-                # No converter provided, use default conversion for common types
-                try:
-                    # Attempt to safely convert the item to the expected type.
-                    converted: Any = _safe_convert(item, expected_type)
-
-                    # We failed to do a safe conversion.
-                    if converted is None:
-                        log_warning(
-                            f"{name}[{i}] wrong type and no converter provided, "
-                            f"skipping: {item}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "item": item,
-                                "expected_type": expected_type.__name__,
-                                "actual_type": type(item).__name__,
-                            },
-                        )
-                        continue
-
-                    # Validate converted item if validator is provided.
-                    if validator and not validator(converted):
-                        log_warning(
-                            f"{name}[{i}] converted item failed validation, "
-                            f"skipping: {converted}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "original": item,
-                                "converted": converted,
-                            },
-                        )
-                        continue
-
-                    cleaned_list.append(converted)
-                except (ValueError, TypeError) as e:
-                    log_warning(
-                        f"{name}[{i}] conversion failed, skipping item: {item}",
-                        {
-                            **(context or {}),
-                            "name": name,
-                            "index": i,
-                            "item": item,
-                            "error": str(e),
-                        },
-                    )
-
-    if had_invalid_items:
-        log_warning(
-            f"{name} had invalid items, cleaned list created",
-            {
-                **(context or {}),
-                "name": name,
-                "original_length": len(values),
-                "cleaned_length": len(cleaned_list),
-                "expected_type": expected_type.__name__,
-            },
-        )
+                log_warning(
+                    f"{name}[{i}] failed validation, " f"skipping item: {item}",
+                    ctx,
+                )
 
     return cleaned_list
 

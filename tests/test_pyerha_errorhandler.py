@@ -317,7 +317,12 @@ def test_ensure_list_of_type_non_list_input(caplog):
 
 def test_ensure_list_of_type_mixed_types_no_converter(caplog):
     with caplog.at_level(logging.WARNING):
-        result = ensure_list_of_type([1, "2", 3.0, None], "test_param", int)
+        result = ensure_list_of_type(
+            values=[1, "2", 3.0, None],
+            name="test_param",
+            expected_type=int,
+            allow_none=False,
+        )
         assert result == [1, 2, 3]
 
 
@@ -327,13 +332,14 @@ def test_ensure_list_of_type_with_converter(caplog):
 
     with caplog.at_level(logging.WARNING):
         result = ensure_list_of_type(
-            [1, "2", 3.0, "invalid"],
-            "test_param",
-            int,
+            values=[1, "2", 3.0, "invalid"],
+            name="test_param",
+            expected_type=int,
+            allow_none=False,
             converter=str_to_int_converter,
         )
         assert result == [1, 2, 3]
-        assert "test_param[3] conversion failed, skipping item: invalid" in caplog.text
+        assert "test_param[3] failed validation, skipping item: invalid" in caplog.text
 
 
 def test_ensure_list_of_type_with_validator(caplog):
