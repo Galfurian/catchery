@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import patch
-from catchery.validation import ensure_object
+
+import pytest
+
 from catchery.error_handler import get_default_handler
+from catchery.validation import ensure_object
 
 get_default_handler().set_json_logging()
 

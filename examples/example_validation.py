@@ -1,6 +1,7 @@
+import logging
+
 from catchery.error_handler import get_default_handler
 from catchery.validation import ensure_object
-import logging
 
 # Get the default handler.
 handler = get_default_handler()

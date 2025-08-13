@@ -1,12 +1,23 @@
 import logging
 import threading
-import json
+from typing import Generator, List
+
 import pytest
 
-from typing import List, Generator
-
 # Explicitly import from catchery modules.
-from catchery import *
+from catchery import (
+    AppError,
+    ErrorHandler,
+    ErrorSeverity,
+    ensure_int_in_range,
+    ensure_list_of_type,
+    ensure_non_negative_int,
+    ensure_string,
+    safe_get_attribute,
+    set_default_handler,
+    validate_object,
+    validate_type,
+)
 
 
 @pytest.fixture
@@ -131,7 +142,7 @@ def test_validate_object_missing_attrs():
 
     obj = MyClass()
     with pytest.raises(
-        Exception, match="test_obj missing required attributes: \['attr2'\]"
+        Exception, match=r"test_obj missing required attributes: \['attr2'\]"
     ):
         validate_object(obj, "test_obj", attributes=["attr1", "attr2"])
 

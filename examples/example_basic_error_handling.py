@@ -1,12 +1,13 @@
+import logging
+
 from catchery.error_handler import (
-    get_default_handler,
     ErrorSeverity,
+    get_default_handler,
+    log_critical,
+    log_error,
     log_info,
     log_warning,
-    log_error,
-    log_critical,
 )
-import logging
 
 # Get the default handler.
 handler = get_default_handler()

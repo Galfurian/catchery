@@ -1,5 +1,6 @@
-from catchery.error_handler import get_default_handler, ErrorSeverity
 import logging
+
+from catchery.error_handler import ErrorSeverity, get_default_handler
 
 # Get the default handler.
 handler = get_default_handler()

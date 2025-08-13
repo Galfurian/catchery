@@ -1,6 +1,7 @@
-from catchery.error_handler import get_default_handler, log_critical
 import logging
 import traceback
+
+from catchery.error_handler import get_default_handler, log_critical
 
 # Get the default handler.
 handler = get_default_handler()

@@ -1,10 +1,11 @@
+import logging
+
 from catchery.error_handler import (
     get_default_handler,
+    log_error,
     log_info,
     log_warning,
-    log_error,
 )
-import logging
 
 # Get the default handler.
 handler = get_default_handler()
@@ -26,5 +27,7 @@ with handler.CaptureErrors(handler) as captured_errors:
 print(f"Captured {len(captured_errors)} errors:")
 for err in captured_errors:
     print(
-        f"  - Message: {err.message}, Severity: {err.severity.value}, Context: {err.context}"
+        f"  - Message: {err.message}, "
+        f"Severity: {err.severity.value}, "
+        f"Context: {err.context}"
     )

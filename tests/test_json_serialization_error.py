@@ -1,12 +1,11 @@
-import pytest
-import json
 import logging
 from io import StringIO
-
-from catchery.validation import ensure_object
-from catchery.error_handler import set_default_handler, ErrorHandler, log_critical
-
 from typing import Generator
+
+import pytest
+
+from catchery.error_handler import ErrorHandler, log_critical, set_default_handler
+from catchery.validation import ensure_object
 
 
 @pytest.fixture

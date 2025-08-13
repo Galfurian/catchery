@@ -6,14 +6,12 @@ Centralized error handling and logging system.
 # Imports & Type Aliases
 # =============================================================================
 
-import inspect
 import json
 import logging
 import threading
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Protocol, TypeVar
 
 T = TypeVar("T")
@@ -382,6 +380,7 @@ class ErrorHandler:
                 "context": error.context,
                 "exception": str(error.exception) if error.exception else None,
             }
+            # Log the error.
             log_method(
                 msg=log_record,
                 **log_kwargs,
@@ -391,8 +390,13 @@ class ErrorHandler:
             # Append context to the message for plain text logging
             full_message = error.message
             if error.context:
-                context_str = ", ".join([f"{k}={v}" for k, v in error.context.items()])
+                # Get the context as a list of key=value strings.
+                lst = [f"{k}={v}" for k, v in error.context.items()]
+                # Create a context string from the list.
+                context_str = ", ".join(lst)
+                # Build the full message.
                 full_message = f"{error.message} ({context_str})"
+            # Log the error.
             log_method(msg=full_message, stacklevel=2 + stack_offset)
 
         # Raise an exception if requested, with optional chaining.
