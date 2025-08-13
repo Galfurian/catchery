@@ -11,6 +11,19 @@ from .error_handler import get_default_handler, ErrorSeverity, log_warning
 # =============================================================================
 
 
+def _get_type_display_name(obj_or_type: Any) -> str:
+    """
+    Returns a human-readable name for a given object's type or a type itself.
+    Handles cases where expected_type might be a tuple of types.
+    """
+    if isinstance(obj_or_type, type):
+        return obj_or_type.__name__
+    elif isinstance(obj_or_type, tuple):
+        return f"({', '.join(_get_type_display_name(t) for t in obj_or_type)})"
+    else:
+        return type(obj_or_type).__name__
+
+
 def _attempt_default_conversion(
     value: Any, expected_type: Any, name: str, ctx: dict[str, Any]
 ) -> Any | None:
@@ -25,8 +38,6 @@ def _attempt_default_conversion(
             return int(value)
         elif expected_type is float and not isinstance(value, float):
             return float(value)
-        else:
-            return None  # No default conversion possible for this type
     except (ValueError, TypeError) as e:
         log_warning(
             f"Default conversion of '{name}' to {expected_type.__name__} failed: {e}. "
@@ -36,7 +47,7 @@ def _attempt_default_conversion(
                 "error": str(e),
             },
         )
-        return None
+    return None
 
 
 # =============================================================================
@@ -200,9 +211,7 @@ def ensure_value(
         The validated and/or converted value, or the `default` value.
     """
     # Get the type name.
-    type_name = (
-        expected_type.__name__ if isinstance(expected_type, type) else expected_type
-    )
+    type_name = _get_type_display_name(expected_type)
     # Make sure the context is valid.
     ctx: dict[str, Any] = {
         **(context or {}),
@@ -495,12 +504,10 @@ def ensure_list_of_type(
         return default
 
     # Get the type name of values.
-    values_type_name = values.__class__.__name__ if isinstance(values, type) else values
+    values_type_name = _get_type_display_name(values)
 
     # Get the type name.
-    expected_type_name = (
-        expected_type.__name__ if isinstance(expected_type, type) else expected_type
-    )
+    expected_type_name = _get_type_display_name(expected_type)
 
     # Make sure the context is valid.
     ctx: dict[str, Any] = {
