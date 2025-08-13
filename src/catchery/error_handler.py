@@ -18,6 +18,31 @@ from typing import Any, Callable, Deque, Dict, List, Protocol, TypeVar
 
 T = TypeVar("T")
 
+# =============================================================================
+# Core Enums & Data Classes
+# =============================================================================
+
+
+def _safe_json_serialize(obj: Any) -> Any:
+    """
+    Attempts to JSON serialize an object. If it fails, returns a string
+    representation of the object.
+
+    Args:
+        obj (Any): The object to serialize.
+
+    Returns:
+        Any: The JSON-serializable object or its string representation.
+    """
+    try:
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                obj[key] = _safe_json_serialize(value)
+        json.dumps(obj)
+        return obj
+    except (TypeError, OverflowError):
+        return repr(obj)
+
 
 # =============================================================================
 # Core Enums & Data Classes
@@ -81,7 +106,7 @@ class JsonFormatter(logging.Formatter):
         for key, value in record.__dict__.items():
             if key not in log_record and not key.startswith("_"):
                 log_record[key] = value
-        return json.dumps(log_record)
+        return _safe_json_serialize(log_record)
 
 
 class ErrorHandler:
@@ -237,6 +262,15 @@ class ErrorHandler:
         else:
             self.set_plain_text_logging()
 
+    def get_logger(self) -> logging.Logger:
+        """
+        Returns the logger instance used by the ErrorHandler.
+
+        Returns:
+            logging.Logger: The logger instance.
+        """
+        return self.logger
+
     def set_plain_text_formatter(self, formatter: logging.Formatter) -> None:
         """
         Sets a custom plain text formatter for the logger.
@@ -340,8 +374,6 @@ class ErrorHandler:
         log_kwargs: Dict[str, Any] = {
             "extra": {f"ctx_{k}": v for k, v in error.context.items()}
         }
-        if error.exception:
-            log_kwargs["exc_info"] = error.exception
 
         if self._use_json_logging:
             log_record: dict[str, Any] = {
@@ -351,18 +383,23 @@ class ErrorHandler:
                 "exception": str(error.exception) if error.exception else None,
             }
             log_method(
-                json.dumps(log_record), **log_kwargs, stacklevel=2 + stack_offset
+                msg=log_record,
+                **log_kwargs,
+                stacklevel=2 + stack_offset,
             )
         else:
-            log_method(error.message, **log_kwargs, stacklevel=2 + stack_offset)
+            # Append context to the message for plain text logging
+            full_message = error.message
+            if error.context:
+                context_str = ", ".join([f"{k}={v}" for k, v in error.context.items()])
+                full_message = f"{error.message} ({context_str})"
+            log_method(msg=full_message, stacklevel=2 + stack_offset)
 
         # Raise an exception if requested, with optional chaining.
-        if not raise_exception or not error.exception:
-            return
-
-        if chain_exception:
-            raise error.exception from chain_exception
-        raise error.exception
+        if raise_exception and error.exception:
+            if chain_exception:
+                raise error.exception from chain_exception
+            raise error.exception
 
     def safe_execute(
         self,

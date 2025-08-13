@@ -101,7 +101,7 @@ def test_exception_chaining(handler: ErrorHandler) -> None:
 
 # Test validate_object
 def test_validate_object_none():
-    with pytest.raises(Exception, match="Required value 'test_obj' is None"):
+    with pytest.raises(Exception, match="Required object 'test_obj' is None"):
         validate_object(None, "test_obj")
 
 
@@ -136,7 +136,7 @@ def test_validate_object_missing_attrs():
 
 
 def test_validate_object_with_context():
-    with pytest.raises(Exception, match="Required value 'test_obj' is None"):
+    with pytest.raises(Exception, match="Required object 'test_obj' is None"):
         validate_object(None, "test_obj", context={"source": "test"})
 
 
@@ -152,7 +152,7 @@ def test_require_type_invalid():
 
 
 def test_require_type_none():
-    with pytest.raises(Exception, match="Required value 'test_param' is None"):
+    with pytest.raises(Exception, match="Required object 'test_param' is None"):
         validate_type(None, "test_param", str)
 
 
@@ -355,11 +355,11 @@ def test_ensure_list_of_type_with_validator(caplog):
 
 
 def test_ensure_list_of_type_converter_and_validator(caplog):
-    def converter(value: str) -> int:
-        return int(value)
+    def converter(object: str) -> int:
+        return int(object)
 
-    def is_positive(value: int) -> bool:
-        return value > 0
+    def is_positive(object: int) -> bool:
+        return object > 0
 
     with caplog.at_level(logging.WARNING):
         result = ensure_list_of_type(
