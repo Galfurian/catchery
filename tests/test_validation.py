@@ -5,6 +5,7 @@ from catchery.error_handler import get_default_handler
 
 get_default_handler().set_json_logging()
 
+
 # Mock log_warning to capture warnings without affecting actual logging
 @pytest.fixture(autouse=True)
 def mock_log_warning():
@@ -188,7 +189,9 @@ def test_ensure_value_conversion_success_validation_failure(mock_log_warning):
     def is_even(val):
         return val % 2 == 0
 
-    result = ensure_object("21", "test_conv_val_fail", int, default=0, validator=is_even)
+    result = ensure_object(
+        "21", "test_conv_val_fail", int, default=0, validator=is_even
+    )
     assert result == 0
     assert (
         mock_log_warning.call_count == 2

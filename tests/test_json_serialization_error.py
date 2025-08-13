@@ -4,16 +4,9 @@ import logging
 from io import StringIO
 
 from catchery.validation import ensure_object
-from catchery.error_handler import (
-    get_default_handler,
-    set_global_handler,
-    ErrorHandler,
-    AppError,
-    ErrorSeverity,
-    log_critical,
-)
+from catchery.error_handler import set_default_handler, ErrorHandler, log_critical
 
-from typing import List, Generator
+from typing import Generator
 
 
 @pytest.fixture
@@ -22,12 +15,13 @@ def handler() -> Generator[ErrorHandler, None, None]:
     # Setup: Create a new handler for each test to ensure isolation
     h = ErrorHandler(use_json_logging=True)
     yield h
-    # Teardown: Can be added here if needed, e.g., clearing global state
+    # Teardown: Reset the global handler to ensure a clean state for the next test
+    set_default_handler(None)
 
 
 def test_non_json_serializable_context_is_serialized(handler: ErrorHandler):
     # Set the global handler, to our personal handler.
-    set_global_handler(handler)
+    set_default_handler(handler)
 
     # A non-JSON serializable object (a set)
     non_serializable_object = {"item1", "item2"}
@@ -50,7 +44,7 @@ def test_non_json_serializable_context_is_serialized(handler: ErrorHandler):
 
 def test_log_critical_no_exception_details_on_console(handler: ErrorHandler):
     # Set the global handler, to our personal handler.
-    set_global_handler(handler)
+    set_default_handler(handler)
 
     # Capture stderr output
     captured_stderr = StringIO()
@@ -70,6 +64,3 @@ def test_log_critical_no_exception_details_on_console(handler: ErrorHandler):
     # Assert that the exception details are NOT in the output
     assert "ConnectionError: No DB connection" not in output
     assert "Database connection lost!" in output
-
-    # Reset the global handler to default after the test
-    set_global_handler(ErrorHandler(use_json_logging=False))

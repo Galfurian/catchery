@@ -448,7 +448,7 @@ class ErrorHandler:
 
 
 # Global error handler instance
-_global_error_handler: ErrorHandler | None = None
+_default_global_error_handler: ErrorHandler | None = None
 
 
 def get_default_handler() -> ErrorHandler:
@@ -456,19 +456,19 @@ def get_default_handler() -> ErrorHandler:
     Returns the default global ErrorHandler instance.
     Initializes it if it hasn't been initialized yet.
     """
-    global _global_error_handler
-    if _global_error_handler is None:
-        _global_error_handler = ErrorHandler()
-    return _global_error_handler
+    global _default_global_error_handler
+    if _default_global_error_handler is None:
+        _default_global_error_handler = ErrorHandler()
+    return _default_global_error_handler
 
 
-def set_global_handler(handler: ErrorHandler) -> None:
+def set_default_handler(handler: ErrorHandler | None) -> None:
     """
     Sets the global ErrorHandler instance.
     This is primarily for testing or advanced configuration.
     """
-    global _global_error_handler
-    _global_error_handler = handler
+    global _default_global_error_handler
+    _default_global_error_handler = handler
 
 
 # ==============================================================================

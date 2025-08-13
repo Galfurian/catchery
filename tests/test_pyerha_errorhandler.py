@@ -13,9 +13,10 @@ from catchery import *
 def handler() -> Generator[ErrorHandler, None, None]:
     """Fixture to provide a clean ErrorHandler instance for each test."""
     # Setup: Create a new handler for each test to ensure isolation
-    h = ErrorHandler(error_history_maxlen=100, use_json_logging=True)
+    h = ErrorHandler(use_json_logging=True)
     yield h
-    # Teardown: Can be added here if needed, e.g., clearing global state
+    # Teardown: Reset the global handler to ensure a clean state for the next test
+    set_default_handler(None)
 
 
 def test_basic_logging(handler: ErrorHandler) -> None:
