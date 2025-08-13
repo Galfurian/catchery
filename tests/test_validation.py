@@ -1,10 +1,9 @@
 import pytest
 from unittest.mock import patch
 from catchery.validation import ensure_value
-from catchery.error_handler import (
-    log_warning,
-)  # Assuming log_warning is directly importable or mocked
+from catchery.error_handler import get_default_handler
 
+get_default_handler().set_json_logging(True)
 
 # Mock log_warning to capture warnings without affecting actual logging
 @pytest.fixture(autouse=True)
@@ -34,14 +33,20 @@ def test_ensure_value_none_value_allow_none_false_with_default(mock_log_warning)
     )
     assert result == "default_str"
     mock_log_warning.assert_called_once()
-    assert "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default." in mock_log_warning.call_args[0][0]
+    assert (
+        "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
 
 
 def test_ensure_value_none_value_allow_none_false_no_default(mock_log_warning):
     result = ensure_value(None, "test_none", str, allow_none=False)
     assert result is None  # Default is None if not provided
     mock_log_warning.assert_called_once()
-    assert "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default." in mock_log_warning.call_args[0][0]
+    assert (
+        "'test_none' is None and not allowed for expected type(s) <class 'str'>. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
 
 
 # --- Type Conversion Tests (Default Converters) ---

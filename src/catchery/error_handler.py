@@ -24,58 +24,6 @@ T = TypeVar("T")
 # =============================================================================
 
 
-def _find_project_root() -> Path:
-    """
-    Attempts to find the project root by looking for sentinel files/directories.
-    Searches upwards from the current file's location.
-    """
-    current_file_path = Path(__file__).resolve()
-    current_dir = current_file_path.parent
-
-    # Define potential sentinel files/directories
-    sentinels = [".git", "pyproject.toml", "README.md"]
-
-    for parent in current_dir.parents:
-        for sentinel in sentinels:
-            if (parent / sentinel).exists():
-                return parent
-    # Fallback if no sentinel is found
-    return Path.cwd()
-
-
-def _get_caller_info(skip_frames: int = 2) -> tuple[str, int]:
-    """
-    Get the file path and line number of the caller.
-
-    Args:
-        skip_frames: Number of frames to skip (default 2: this function +
-                     the logging function)
-
-    Returns:
-        tuple: (relative_file_path, line_number)
-    """
-    try:
-        project_root = _find_project_root()
-        stack = inspect.stack()
-
-        # Ensure there are enough frames to skip
-        if len(stack) <= skip_frames:
-            return "unknown", 0
-
-        frame_info = stack[skip_frames]
-        file_path = Path(frame_info.filename)
-        line_number = frame_info.lineno
-
-        try:
-            rel_path = file_path.relative_to(project_root)
-            return str(rel_path), line_number
-        except ValueError:
-            # file_path is not under project_root.
-            return file_path.name, line_number
-    except Exception:
-        return "unknown", 0
-
-
 class ErrorSeverity(Enum):
     """
     Enumeration of error severity levels for the error handling system.
@@ -152,6 +100,16 @@ class ErrorHandler:
 
     _thread_local = threading.local()
 
+    def _get_thread_context(self) -> dict[str, Any]:
+        """
+        Retrieves the thread-local context dictionary.
+
+        Returns:
+            A dictionary containing the thread-local context.
+        """
+        context = getattr(self._thread_local, "context", None)
+        return context if context is not None else {}
+
     class Context:
         """
         Context manager for adding contextual data to all errors in this thread.
@@ -187,16 +145,6 @@ class ErrorHandler:
                 exc_tb: The traceback, if an exception was raised.
             """
             ErrorHandler._thread_local.context = None
-
-    def _get_thread_context(self) -> dict[str, Any]:
-        """
-        Retrieves the thread-local context dictionary.
-
-        Returns:
-            A dictionary containing the thread-local context.
-        """
-        context = getattr(self._thread_local, "context", None)
-        return context if context is not None else {}
 
     class CaptureErrors:
         """
@@ -258,6 +206,7 @@ class ErrorHandler:
         logger: logging.Logger | None = None,
         error_history_maxlen: int = 1000,
         use_json_logging: bool = False,
+        plain_text_formatter: logging.Formatter | None = None,
     ) -> None:
         """
         Initialize the ErrorHandler.
@@ -267,39 +216,63 @@ class ErrorHandler:
             number of errors to keep in history. use_json_logging: If True, logs
             in JSON format.
         """
-        self.logger: logging.Logger = logger or logging.getLogger("app_errors")
         self.error_history: Deque[AppError] = deque(maxlen=error_history_maxlen)
         self._lock = threading.Lock()
         self._callbacks: List[ErrorCallback] = []
-        self.use_json_logging = use_json_logging
+        self._use_json_logging = use_json_logging
+        self._stored_handlers: List[logging.Handler] = []
+        self._plain_text_formatter = plain_text_formatter or logging.Formatter(
+            "[%(asctime)s] %(levelname)-8s: %(message)s", datefmt="%H:%M:%S"
+        )
 
-        # Set up the formatter based on the initial use_json_logging value.
-        self.set_json_logging(use_json_logging)
-
-    def set_json_logging(self, enable: bool) -> None:
-        """
-        Configures the logger to use a custom JSON formatter based on the
-        'enable' flag. Removes existing handlers to prevent duplicate logs and
-        adds a new StreamHandler.
-        """
-        # Remove existing handlers to prevent duplicate logs.
-        for handler in list(self.logger.handlers):
-            self.logger.removeHandler(handler)
-
-        # Create a new handler.
-        handler = logging.StreamHandler()
-
-        # Set the formatter based on the 'enable' flag.
-        if enable:
-            handler.setFormatter(JsonFormatter())
+        if logger is None:
+            self.logger = logging.getLogger("ErrorHandler")
+            handler = logging.StreamHandler()
+            self.logger.addHandler(handler)
         else:
-            handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            )
+            self.logger: logging.Logger = logger
 
-        # Add the handler to the logger.
-        self.logger.addHandler(handler)
-        self.use_json_logging = enable
+        if self._use_json_logging:
+            self.set_json_logging()
+        else:
+            self.set_plain_text_logging()
+
+    def set_plain_text_formatter(self, formatter: logging.Formatter) -> None:
+        """
+        Sets a custom plain text formatter for the logger.
+
+        Args:
+            formatter: The logging.Formatter instance to use for plain text
+            logging.
+        """
+        self._plain_text_formatter = formatter
+        if not self._use_json_logging:
+            self._set_formatter_to_handlers(formatter)
+
+    def set_plain_text_logging(self) -> None:
+        """
+        Configures the logger to use plain text formatting.
+        """
+        self._set_formatter_to_handlers(self._plain_text_formatter)
+        self._use_json_logging = False
+
+    def set_json_logging(self) -> None:
+        """
+        Configures the logger to use JSON formatting.
+        """
+        self._set_formatter_to_handlers(JsonFormatter())
+        self._use_json_logging = True
+
+    def _set_formatter_to_handlers(self, formatter: logging.Formatter) -> None:
+        """
+        Sets the given formatter to all StreamHandlers of the logger.
+
+        Args:
+            formatter: The logging.Formatter instance to set.
+        """
+        for handler in self.logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setFormatter(formatter)
 
     def register_callback(self, callback: ErrorCallback) -> None:
         """Register a callback to be called on every error."""
@@ -313,6 +286,7 @@ class ErrorHandler:
         exception: Exception | None = None,
         raise_exception: bool = False,
         chain_exception: Exception | None = None,
+        stack_offset: int = 0,
     ) -> None:
         """
         Handle an error by either receiving an AppErrWor instance or the full
@@ -336,49 +310,14 @@ class ErrorHandler:
                 raise ValueError(
                     "'severity' must be provided when not passing an AppError."
                 )
-            error = self._create_app_error(error, severity, context, exception)
-        self._store_and_notify(error)
-        self._log_error(error)
-        self._raise_if_needed(error, raise_exception, chain_exception)
+            error = AppError(
+                message=error,
+                severity=severity,
+                context={**self._get_thread_context(), **(context or {})},
+                exception=exception,
+            )
 
-    def _create_app_error(
-        self,
-        message: str,
-        severity: ErrorSeverity,
-        context: Dict[str, Any] | None,
-        exception: Exception | None,
-    ) -> AppError:
-        """
-        Create an AppError object with merged context and caller info.
-
-        Args:
-            message: The primary error message. severity: The severity level of
-            the error. context: An optional dictionary of contextual data.
-            exception: An optional exception object.
-
-        Returns:
-            An `AppError` instance fully populated with error details.
-        """
-        file_path, line_number = _get_caller_info(skip_frames=4)
-        merged_context: dict[str, Any] = {
-            **self._get_thread_context(),
-            **(context or {}),
-            "location": f"{file_path}:{line_number}",
-        }
-        return AppError(
-            message=message,
-            severity=severity,
-            context=merged_context,
-            exception=exception,
-        )
-
-    def _store_and_notify(self, error: AppError) -> None:
-        """
-        Store the error in history and notify registered callbacks.
-
-        Args:
-            error: The `AppError` object to store and dispatch.
-        """
+        # Store the error in history and notify registered callbacks.
         with self._lock:
             self.error_history.append(error)
 
@@ -389,72 +328,35 @@ class ErrorHandler:
                 # Prevent a faulty callback from disrupting error handling
                 self.logger.exception("Error in error handler callback")
 
-    def _get_log_method(self, severity: ErrorSeverity) -> Callable[..., None]:
-        """
-        Determine the appropriate logging method based on severity.
-
-        Args:
-            severity: The severity level of the error.
-
-        Returns:
-            The corresponding logger method (e.g., `logger.info`,
-            `logger.error`).
-        """
-        return {
+        # Determine the appropriate logging method based on severity.
+        log_method = {
             ErrorSeverity.LOW: self.logger.info,
             ErrorSeverity.MEDIUM: self.logger.warning,
             ErrorSeverity.HIGH: self.logger.error,
             ErrorSeverity.CRITICAL: self.logger.critical,
-        }.get(severity, self.logger.info)
+        }.get(error.severity, self.logger.info)
 
-    def _log_error(self, error: AppError) -> None:
-        """
-        Log the error using either JSON or plain text format.
-
-        Args:
-            error: The `AppError` object to log.
-        """
-        log_method = self._get_log_method(error.severity)
+        # Log the error using either JSON or plain text format.
         log_kwargs: Dict[str, Any] = {
             "extra": {f"ctx_{k}": v for k, v in error.context.items()}
         }
         if error.exception:
             log_kwargs["exc_info"] = error.exception
 
-        if self.use_json_logging:
+        if self._use_json_logging:
             log_record: dict[str, Any] = {
                 "severity": error.severity.value,
                 "message": error.message,
                 "context": error.context,
                 "exception": str(error.exception) if error.exception else None,
             }
-            log_method(json.dumps(log_record), **log_kwargs)
-        else:
-            location = error.context.get("location", "unknown")
-            formatted_message = (
-                f"{error.severity.value.upper()}: {location} - {error.message}"
+            log_method(
+                json.dumps(log_record), **log_kwargs, stacklevel=2 + stack_offset
             )
-            log_method(formatted_message, **log_kwargs)
+        else:
+            log_method(error.message, **log_kwargs, stacklevel=2 + stack_offset)
 
-    def _raise_if_needed(
-        self,
-        error: AppError,
-        raise_exception: bool,
-        chain_exception: Exception | None,
-    ) -> None:
-        """
-        Raise an exception if requested, with optional chaining.
-
-        Args:
-            error: The `AppError` containing the exception to potentially raise.
-            raise_exception: A boolean indicating whether to raise the
-            exception. chain_exception: An optional exception to chain from.
-
-        Raises:
-            Exception: The exception from the `error` object if
-            `raise_exception`
-                       is True.
-        """
+        # Raise an exception if requested, with optional chaining.
         if not raise_exception or not error.exception:
             return
 
@@ -503,12 +405,34 @@ class ErrorHandler:
                 severity=severity,
                 context=context,
                 exception=e,
+                stack_offset=1,
             )
             return default
 
 
 # Global error handler instance
-ERROR_HANDLER = ErrorHandler(use_json_logging=True)
+_global_error_handler: ErrorHandler | None = None
+
+
+def get_default_handler() -> ErrorHandler:
+    """
+    Returns the default global ErrorHandler instance.
+    Initializes it if it hasn't been initialized yet.
+    """
+    global _global_error_handler
+    if _global_error_handler is None:
+        _global_error_handler = ErrorHandler()
+    return _global_error_handler
+
+
+def set_global_handler(handler: ErrorHandler) -> None:
+    """
+    Sets the global ErrorHandler instance.
+    This is primarily for testing or advanced configuration.
+    """
+    global _global_error_handler
+    _global_error_handler = handler
+
 
 # ==============================================================================
 # VALIDATION HELPERS
@@ -535,7 +459,7 @@ def safe_operation(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Wrapper function that executes the decorated function safely."""
-            return ERROR_HANDLER.safe_execute(
+            return get_default_handler().safe_execute(
                 lambda: func(*args, **kwargs),
                 default_value,
                 error_message,
@@ -569,13 +493,14 @@ def log_info(
         log. raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
     """
-    ERROR_HANDLER.handle(
+    get_default_handler().handle(
         message,
         ErrorSeverity.LOW,
         context,
         exception,
         raise_exception=raise_exception,
         chain_exception=chain_exception,
+        stack_offset=1,
     )
 
 
@@ -596,13 +521,14 @@ def log_warning(
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
     """
-    ERROR_HANDLER.handle(
+    get_default_handler().handle(
         message,
         ErrorSeverity.MEDIUM,
         context,
         exception,
         raise_exception=raise_exception,
         chain_exception=chain_exception,
+        stack_offset=1,
     )
 
 
@@ -623,13 +549,14 @@ def log_error(
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
     """
-    ERROR_HANDLER.handle(
+    get_default_handler().handle(
         message,
         ErrorSeverity.HIGH,
         context,
         exception,
         raise_exception=raise_exception,
         chain_exception=chain_exception,
+        stack_offset=1,
     )
 
 
@@ -650,11 +577,12 @@ def log_critical(
         raise_exception: If True, re-raises the `exception` after handling.
         chain_exception: An optional exception to chain with `exception`.
     """
-    ERROR_HANDLER.handle(
+    get_default_handler().handle(
         message,
         ErrorSeverity.CRITICAL,
         context,
         exception,
         raise_exception=raise_exception,
         chain_exception=chain_exception,
+        stack_offset=1,
     )

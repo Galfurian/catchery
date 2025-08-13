@@ -13,7 +13,7 @@ from catchery import *
 def handler() -> Generator[ErrorHandler, None, None]:
     """Fixture to provide a clean ErrorHandler instance for each test."""
     # Setup: Create a new handler for each test to ensure isolation
-    h = ErrorHandler(error_history_maxlen=100)
+    h = ErrorHandler(error_history_maxlen=100, use_json_logging=True)
     yield h
     # Teardown: Can be added here if needed, e.g., clearing global state
 

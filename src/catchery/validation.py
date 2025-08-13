@@ -4,7 +4,7 @@ This module contains support functions for validating data.
 
 from typing import Any, Callable, Dict, Union
 
-from .error_handler import ERROR_HANDLER, ErrorSeverity, log_warning
+from .error_handler import get_default_handler, ErrorSeverity, log_warning
 
 # =============================================================================
 # SUPPORT FUNCTIONS
@@ -74,7 +74,7 @@ def validate_object(
         `attributes`.
     """
     if value is None:
-        ERROR_HANDLER.handle(
+        get_default_handler().handle(
             error=f"Required value '{name}' is None",
             severity=ErrorSeverity.HIGH,
             context=context or {},
@@ -90,7 +90,7 @@ def validate_object(
                 missing_attrs.append(attribute)
         # If any attributes are missing, log an error.
         if missing_attrs:
-            ERROR_HANDLER.handle(
+            get_default_handler().handle(
                 error=f"{name} missing required attributes: {missing_attrs}",
                 severity=ErrorSeverity.HIGH,
                 context={
@@ -135,7 +135,7 @@ def validate_type(
     validate_object(value, name, context)
     # Then, check the type.
     if not isinstance(value, expected_type):
-        ERROR_HANDLER.handle(
+        get_default_handler().handle(
             error=f"{name} must be of type {expected_type.__name__}, "
             f"got: {type(value).__name__}",
             severity=ErrorSeverity.HIGH,
