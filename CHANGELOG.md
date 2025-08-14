@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2025-08-14
+
+### Refactor
+
+- Improved context management and validation logic in error handler and validation modules.
+- Refactored validation and error handling, including renaming global handler functions and validation functions.
+- Extracted `_get_type_display_name` for better type name formatting.
+- Simplified the error handler and introduced a single default converter.
+- Improved type hinting and validation logic across the core.
+
+### Fixed
+
+- Resolved TypeError and E501 linting issues in the error handler.
+
 ## 0.0.2 - 2025-08-12
 
 ### Fixed
