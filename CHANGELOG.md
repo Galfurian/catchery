@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2025-08-14
+
+### Features
+
+- Added `re_raise_chained` decorator for robust exception chaining.
+
 ## 0.4.0 - 2025-08-14
 
 ### Features
