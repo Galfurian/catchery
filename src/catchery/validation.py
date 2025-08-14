@@ -322,10 +322,7 @@ def ensure_object(
 
     # Handle None object.
     if obj is None:
-        if allow_none and (
-            (isinstance(expected_type, tuple) and None in expected_type)
-            or expected_type is type(None)
-        ):
+        if allow_none and (expected_type is type(None) or (isinstance(expected_type, tuple) and type(None) in expected_type)):
             return None
         log_warning(
             f"'{name}' is None and not allowed for expected type(s) "
@@ -356,14 +353,17 @@ def ensure_object(
         elif isinstance(expected_type, tuple):
             # Try converting to one of the types in the tuple.
             for t in expected_type:
-                processed_object = _attempt_default_conversion(
+                converted_attempt = _attempt_default_conversion(
                     obj,
                     t,
                     name,
                     ctx,
                 )
-                if processed_object is not None:
+                if converted_attempt is not None:
+                    processed_object = converted_attempt
                     break
+            else: # No break, conversion failed for all types in tuple
+                processed_object = None
 
         else:
             # For single expected_type.
@@ -374,8 +374,8 @@ def ensure_object(
                 ctx,
             )
 
-    # If we failed to process the object, return the default value.
-    if not processed_object:
+    # If we failed to process the object (i.e., it's None after conversion attempts), return the default value.
+    if processed_object is None:
         return default
 
     # Apply validator if provided
