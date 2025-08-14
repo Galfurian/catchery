@@ -377,8 +377,8 @@ def ensure_object(
                 ctx,
             )
 
-    # If we failed to process the object (i.e., it's None after conversion attempts),
-    # return the default value.
+    # If we failed to process the object (i.e., it's None after conversion
+    # attempts), return the default value.
     if processed_object is None:
         return default
 
