@@ -2,7 +2,8 @@
 This module contains support functions for validating data.
 """
 
-from typing import Any, Callable, Dict, Union
+from enum import Enum
+from typing import Any, Callable, Dict, Type, Union
 
 from .error_handler import ErrorSeverity, get_default_handler, log_warning
 
@@ -400,6 +401,65 @@ def ensure_object(
             return default
 
     return processed_object
+
+
+def ensure_enum(
+    obj: Any,
+    name: str,
+    enum_class: Type[Enum],
+    default: Enum | None = None,
+    context: Dict[str, Any] | None = None,
+) -> Enum | None:
+    """
+    Ensures a value is a valid member of a specified Enum class.
+
+    This function attempts to convert the provided `obj` into a member of the
+    `enum_class`. It tries to match by value and then by name
+    (case-insensitive). If conversion is not possible, a warning is logged, and
+    the specified `default` Enum member is returned.
+
+    Args:
+        obj (Any): The object to be ensured as an Enum member.
+        name (str): The human-readable name for the object, used in log
+            messages.
+        enum_class (Type[Enum]): The Enum class to validate against.
+        default (Enum | None): The default Enum member to return if `obj` cannot
+            be converted or is invalid. Defaults to `None`.
+        context (Dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
+
+    Returns:
+        (Enum): The validated Enum member, or the `default` Enum member.
+    """
+    ctx: dict[str, Any] = {
+        **(context or {}),
+        "param_name": name,
+        "object_attempted": obj,
+        "expected_enum_class": enum_class.__name__,
+    }
+
+    if isinstance(obj, enum_class):
+        return obj
+
+    # Try to convert by value
+    try:
+        return enum_class(obj)
+    except ValueError:
+        pass  # Continue to try by name
+
+    # Try to convert by name (case-insensitive)
+    if isinstance(obj, str):
+        try:
+            return enum_class[obj.upper()]  # Enums are often uppercase
+        except KeyError:
+            pass
+
+    log_warning(
+        f"'{name}' is not a valid member of {enum_class.__name__}. "
+        f"Attempted value: {obj}. Using default.",
+        ctx,
+    )
+    return default
 
 
 def ensure_string(

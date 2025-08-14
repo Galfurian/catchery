@@ -1,7 +1,7 @@
 import logging
 
 from catchery.error_handler import get_default_handler
-from catchery.validation import ensure_object
+from catchery.validation import ensure_object, ensure_enum # Added ensure_enum
 
 # Get the default handler.
 handler = get_default_handler()
@@ -184,3 +184,58 @@ result17 = ensure_object(
     validator=is_even,
 )
 print(f"odd_number_str (converted, invalid, default to 0): {result17}\n")
+
+# --- Example 9: Using ensure_enum ---
+print("\n" + "=" * 80 + "\n# Example 9: Using ensure_enum\n\n")
+
+from enum import Enum
+
+class TrafficLight(Enum):
+    RED = "stop"
+    YELLOW = "caution"
+    GREEN = "go"
+
+# Valid enum member by value
+status1 = ensure_enum(
+    obj="stop",
+    name="traffic_status_value",
+    enum_class=TrafficLight,
+    default=TrafficLight.RED,
+)
+print(f"Traffic status (by value 'stop'): {status1}\n")
+
+# Valid enum member by name (case-insensitive)
+status2 = ensure_enum(
+    obj="YELLOW",
+    name="traffic_status_name",
+    enum_class=TrafficLight,
+    default=TrafficLight.RED,
+)
+print(f"Traffic status (by name 'YELLOW'): {status2}\n")
+
+# Invalid enum member, using default
+status3 = ensure_enum(
+    obj="invalid_color",
+    name="traffic_status_invalid",
+    enum_class=TrafficLight,
+    default=TrafficLight.RED,
+)
+print(f"Traffic status (invalid, default RED): {status3}\n")
+
+# Valid enum member (already an Enum instance)
+status4 = ensure_enum(
+    obj=TrafficLight.GREEN,
+    name="traffic_status_instance",
+    enum_class=TrafficLight,
+    default=TrafficLight.RED,
+)
+print(f"Traffic status (already instance GREEN): {status4}\n")
+
+# Invalid enum member, default is None
+status5 = ensure_enum(
+    obj="unknown",
+    name="traffic_status_unknown",
+    enum_class=TrafficLight,
+    default=None,
+)
+print(f"Traffic status (unknown, default None): {status5}\n")

@@ -3,7 +3,8 @@ from unittest.mock import patch
 import pytest
 
 from catchery.error_handler import get_default_handler
-from catchery.validation import ensure_object
+from catchery.validation import ensure_object, ensure_enum
+from enum import Enum
 
 get_default_handler().set_json_logging()
 
@@ -308,3 +309,87 @@ def test_ensure_value_no_converter_no_default_conversion_possible_no_default(
     result = ensure_object(obj, "test_no_conv_possible_no_default", int)
     assert result is None
     assert mock_log_warning.call_count == 2
+
+
+class ExampleEnum(Enum):
+    ONE = 1
+    TWO = 2
+    THREE = 3
+    ALPHA = "alpha"
+    BETA = "beta"
+
+
+def test_ensure_enum_valid_by_value():
+    assert ensure_enum(1, "test_enum", ExampleEnum) == ExampleEnum.ONE
+
+
+def test_ensure_enum_valid_by_name_case_sensitive():
+    assert ensure_enum("ALPHA", "test_enum", ExampleEnum) == ExampleEnum.ALPHA
+
+
+def test_ensure_enum_valid_by_name_case_insensitive():
+    assert ensure_enum("alpha", "test_enum", ExampleEnum) == ExampleEnum.ALPHA
+
+
+def test_ensure_enum_already_enum_instance():
+    assert ensure_enum(ExampleEnum.TWO, "test_enum", ExampleEnum) == ExampleEnum.TWO
+
+
+def test_ensure_enum_invalid_value_with_default(mock_log_warning):
+    result = ensure_enum(4, "test_enum", ExampleEnum, default=ExampleEnum.ONE)
+    assert result == ExampleEnum.ONE
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: 4. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
+
+
+def test_ensure_enum_invalid_name_with_default(mock_log_warning):
+    result = ensure_enum("FOUR", "test_enum", ExampleEnum, default=ExampleEnum.ONE)
+    assert result == ExampleEnum.ONE
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: FOUR. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
+
+
+def test_ensure_enum_invalid_value_no_default_returns_none(mock_log_warning):
+    result = ensure_enum(4, "test_enum", ExampleEnum, default=None)
+    assert result is None
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: 4. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
+
+
+def test_ensure_enum_invalid_name_no_default_returns_none(mock_log_warning):
+    result = ensure_enum("FOUR", "test_enum", ExampleEnum, default=None)
+    assert result is None
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: FOUR. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
+
+
+def test_ensure_enum_none_input_with_default(mock_log_warning):
+    result = ensure_enum(None, "test_enum", ExampleEnum, default=ExampleEnum.ONE)
+    assert result == ExampleEnum.ONE
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: None. Using default."
+        in mock_log_warning.call_args[0][0]
+    )
+
+
+def test_ensure_enum_none_input_no_default_returns_none(mock_log_warning):
+    result = ensure_enum(None, "test_enum", ExampleEnum, default=None)
+    assert result is None
+    mock_log_warning.assert_called_once()
+    assert (
+        "'test_enum' is not a valid member of ExampleEnum. Attempted value: None. Using default."
+        in mock_log_warning.call_args[0][0]
+    )

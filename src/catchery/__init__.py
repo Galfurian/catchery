@@ -15,6 +15,7 @@ from .error_handler import (
     set_default_handler,
 )
 from .validation import (
+    ensure_enum,
     ensure_int_in_range,
     ensure_list_of_type,
     ensure_non_negative_int,
@@ -40,6 +41,7 @@ __all__ = [
     "validate_object",
     "validate_type",
     "ensure_object",
+    "ensure_enum",
     "ensure_string",
     "ensure_non_negative_int",
     "ensure_int_in_range",
