@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 - 2025-08-14
+
+### Features
+
+- Added `ensure_enum` function for robust Enum member validation and conversion.
+
 ## 0.3.0 - 2025-08-14
 
 ### Refactor
