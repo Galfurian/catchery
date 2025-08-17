@@ -47,6 +47,15 @@ class AppError:
     exception: Exception | None = None
 
 
+class ChainedReRaiseError(RuntimeError):
+    """
+    A custom exception type used by `re_raise_chained` to indicate that an
+    exception has been re-raised as part of a chain.
+    """
+
+    pass
+
+
 class ErrorCallback(Protocol):
     def __call__(self, error: AppError) -> None: ...
 
@@ -526,39 +535,71 @@ def safe_operation(
 
 
 def re_raise_chained(
-    new_exception_type: Type[Exception],
     message: str,
+    new_exception_type: Type[Exception] = ChainedReRaiseError,
     severity: ErrorSeverity = ErrorSeverity.HIGH,
-    context: Dict[str, Any] | None = None,
+    context: Dict[str, Any] | Callable[..., Dict[str, Any]] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     A decorator that catches exceptions from the decorated function, logs them,
     and then re-raises a new, specified exception, chaining it to the original.
 
     Args:
-        new_exception_type (Type[Exception]): The type of exception to re-raise.
         message (str): The message for the new exception.
+        new_exception_type (Type[Exception]): The type of exception to re-raise.
         severity (ErrorSeverity): The severity level for logging the original error.
-        context (Dict[str, Any] | None): Additional context for logging.
+        context (Dict[str, Any] | Callable[..., Dict[str, Any]] | None):
+        Additional context for logging. Can be a dictionary or a callable
+        that takes the decorated function's args/kwargs and returns a dict.
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            handler = get_default_handler()
+            runtime_context: Dict[str, Any] = {}
+            if callable(context):
+                try:
+                    # Pass args and kwargs to the context
+                    runtime_context = context(*args, **kwargs)
+                except Exception as e:
+                    # Log if the context itself fails
+                    handler.handle(
+                        error=f"Failed to build context for '{func.__name__}': {e}",
+                        severity=ErrorSeverity.HIGH,
+                        context={
+                            "function_name": func.__name__,
+                            "error_in_context_builder": str(e),
+                        },
+                    )
+            elif context is not None:
+                runtime_context = context
+
             try:
                 return func(*args, **kwargs)
             except Exception as original_exception:
-                handler = get_default_handler()
-                # Log the original exception with its context
+                # Conditionally log the original exception if it's not a ChainedReRaiseError
+                if not isinstance(original_exception, ChainedReRaiseError):
+                    handler.handle(
+                        error=f"{type(original_exception).__name__} ({func.__name__}): {original_exception}",
+                        severity=severity,
+                        context=runtime_context,
+                        exception=original_exception,
+                        raise_exception=False,
+                    )
+                # Log the new exception being raised.
                 handler.handle(
-                    error=f"Error in '{func.__name__}': {original_exception}",
+                    error=f"{new_exception_type.__name__} ({func.__name__}): {message}",
                     severity=severity,
-                    context={**(context or {}), "function_name": func.__name__},
-                    exception=original_exception,
-                    raise_exception=False # Log it, but don't re-raise the original
+                    context=runtime_context,
+                    exception=new_exception_type(message),
+                    raise_exception=False,
                 )
                 # Re-raise the new exception, explicitly chaining it to the original
                 raise new_exception_type(message) from original_exception
+
         return wrapper
+
     return decorator
 
 

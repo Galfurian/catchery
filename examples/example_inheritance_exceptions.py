@@ -6,6 +6,7 @@ from catchery.error_handler import (
     log_info,
     re_raise_chained,
     ErrorSeverity,
+    ChainedReRaiseError,  # Import ChainedReRaiseError
 )
 
 # Get the default handler.
@@ -16,41 +17,57 @@ handler.get_logger().setLevel(logging.DEBUG)
 
 
 class Grandparent:
-    def __init__(self, value: int):
+    @re_raise_chained(
+        message="Grandparent: Failed to initialize.",  # message is now first
+        severity=ErrorSeverity.HIGH,
+        context=lambda self, value: {
+            "gp_value": value,
+        },
+    )
+    def func_gp(self, value: int) -> "Grandparent":
         if value < 0:
             raise ValueError("Grandparent: Value cannot be negative.")
-        self.grandparent_value = value
-        log_info(f"Grandparent initialized with value: {self.grandparent_value}")
+        self.gp_value = value
+        log_info(f"Grandparent initialized with value: {self.gp_value}")
+        return self
 
 
 class Parent(Grandparent):
+
     @re_raise_chained(
-        new_exception_type=RuntimeError,
-        message="Parent: Failed to initialize grandparent.",
+        message="Parent: Failed to initialize.",  # message is now first
         severity=ErrorSeverity.HIGH,
-        context={"stage": "grandparent_init"},
+        context=lambda self, gp_value, value: {
+            "gp_value": gp_value,
+            "p_value": value,
+        },
     )
-    def __init__(self, grandparent_value: int, value: int):
-        super().__init__(grandparent_value)
+    def func_p(self, gp_value: int, value: int) -> "Parent":
+        super().func_gp(gp_value)
         if value < 0:
             raise ValueError("Parent: Value cannot be negative.")
-        self.parent_value = value
-        log_info(f"Parent initialized with value: {self.parent_value}")
+        self.p_value = value
+        log_info(f"Parent initialized with value: {self.p_value}")
+        return self
 
 
 class Child(Parent):
     @re_raise_chained(
-        new_exception_type=RuntimeError,
-        message="Child: Failed to initialize parent.",
+        message="Child: Failed to initialize.",  # message is now first
         severity=ErrorSeverity.HIGH,
-        context={"stage": "parent_init"},
+        context=lambda self, gp_value, p_value, c_value: {
+            "gp_value": gp_value,
+            "p_value": p_value,
+            "c_value": c_value,
+        },
     )
-    def __init__(self, grandparent_value: int, parent_value: int, child_value: str):
-        super().__init__(grandparent_value, parent_value)
-        if not child_value:
+    def func_c(self, gp_value: int, p_value: int, c_value: str) -> "Child":
+        super().func_p(gp_value, p_value)
+        if not c_value:
             raise ValueError("Child: Child value cannot be empty.")
-        self.child_value = child_value
-        log_info(f"Child initialized with value: {self.child_value}")
+        self.c_value = c_value
+        log_info(f"Child initialized with value: {self.c_value}")
+        return self
 
 
 # =============================================================================
@@ -60,10 +77,9 @@ class Child(Parent):
 print("--- Attempting valid initializations ---\n")
 
 try:
-    instance = Grandparent(10)
+    instance = Grandparent().func_gp(10)
     print(
-        f"Successfully created Grandparent instance with value: "
-        f"{instance.grandparent_value}"
+        f"Successfully created Grandparent instance with value: " f"{instance.gp_value}"
     )
 except Exception as e:
     print(f"Failed to create Grandparent instance: {e}")
@@ -71,11 +87,11 @@ except Exception as e:
 print()
 
 try:
-    instance = Parent(10, 7)
+    instance = Parent().func_p(10, 7)
     print(
         f"Successfully created Parent instance with values: "
-        f"{instance.grandparent_value}, "
-        f"{instance.parent_value}"
+        f"{instance.gp_value}, "
+        f"{instance.p_value}"
     )
 except Exception as e:
     print(f"Failed to create Parent instance: {e}")
@@ -83,12 +99,12 @@ except Exception as e:
 print()
 
 try:
-    instance = Child(5, 7, "child_abc")
+    instance = Child().func_c(10, 5, "c_value")
     print(
         f"Successfully created Child instance with values: "
-        f"{instance.grandparent_value}, "
-        f"{instance.parent_value}, "
-        f"{instance.child_value}"
+        f"{instance.gp_value}, "
+        f"{instance.p_value}, "
+        f"{instance.c_value}"
     )
 except Exception as e:
     print(f"Failed to create Child instance: {e}")
@@ -100,35 +116,12 @@ except Exception as e:
 print("\n--- Attempting invalid initializations ---\n")
 
 try:
-    instance = Grandparent(-1)
-    print(
-        f"Successfully created Grandparent instance (should have failed): "
-        f"{instance.grandparent_value}"
-    )
-except Exception as e:
-    print(f"Failed to create Grandparent instance as expected: {e}")
-
-print()
-
-try:
-    instance = Parent(1, -1)
-    print(
-        f"Successfully created Parent instance (should have failed): "
-        f"{instance.grandparent_value}, "
-        f"{instance.parent_value}"
-    )
-except Exception as e:
-    print(f"Failed to create Parent instance as expected: {e}")
-
-print()
-
-try:
-    instance = Child(-1, 1, "child_xyz")
+    instance = Child().func_c(-1, 1, "child")
     print(
         f"Successfully created Child instance (grandparent init should have failed): "
-        f"{instance.grandparent_value}, "
-        f"{instance.parent_value}, "
-        f"{instance.child_value}"
+        f"{instance.gp_value}, "
+        f"{instance.p_value}, "
+        f"{instance.c_value}"
     )
 except Exception as e:
     print(f"Failed to create Child instance as expected (grandparent init): {e}")
@@ -136,12 +129,25 @@ except Exception as e:
 print()
 
 try:
-    instance = Child(1, -1, "child_xyz")
+    instance = Child().func_c(1, -1, "child_xyz")
     print(
         f"Successfully created Child instance (parent init should have failed): "
-        f"{instance.grandparent_value}, "
-        f"{instance.parent_value}, "
-        f"{instance.child_value}"
+        f"{instance.gp_value}, "
+        f"{instance.p_value}, "
+        f"{instance.c_value}"
     )
 except Exception as e:
     print(f"Failed to create Child instance as expected (parent init): {e}")
+
+print()
+
+try:
+    instance = Child().func_c(0, 1, None)
+    print(
+        f"Successfully created Child instance (child init should have failed): "
+        f"{instance.gp_value}, "
+        f"{instance.p_value}, "
+        f"{instance.c_value}"
+    )
+except Exception as e:
+    print(f"Failed to create Child instance as expected (child init): {e}")
