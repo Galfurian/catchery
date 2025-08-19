@@ -9,6 +9,7 @@ Centralized error handling and logging system.
 import json
 import logging
 import threading
+import atexit # New import
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -249,30 +250,43 @@ class ErrorHandler:
         error_history_maxlen: int = 1000,
         use_json_logging: bool = False,
         plain_text_formatter: logging.Formatter | None = None,
+        log_file_path: str | None = None,  # New parameter for file logging
     ) -> None:
         """
         Initialize the ErrorHandler.
 
         Args:
-            logger: Optional custom logger instance. error_history_maxlen: Max
-            number of errors to keep in history. use_json_logging: If True, logs
-            in JSON format.
+            logger: Optional custom logger instance.
+            error_history_maxlen: Max number of errors to keep in history.
+            use_json_logging: If True, logs in JSON format.
+            plain_text_formatter: Optional custom formatter for plain text logging.
+            log_file_path: Optional path to a file for persistent logging.
         """
         self.error_history: Deque[AppError] = deque(maxlen=error_history_maxlen)
         self._lock = threading.Lock()
         self._callbacks: List[ErrorCallback] = []
         self._use_json_logging = use_json_logging
-        self._stored_handlers: List[logging.Handler] = []
         self._plain_text_formatter = plain_text_formatter or logging.Formatter(
             "[%(asctime)s] %(levelname)-8s: %(message)s", datefmt="%H:%M:%S"
         )
+        self._file_handler: logging.FileHandler | None = None  # New attribute for file handler
 
         if logger is None:
             self.logger = logging.getLogger("ErrorHandler")
-            handler = logging.StreamHandler()
-            self.logger.addHandler(handler)
+            # Add a default StreamHandler if no logger is provided and no handlers exist
+            if not self.logger.handlers:
+                stream_handler = logging.StreamHandler()
+                self.logger.addHandler(stream_handler)
         else:
             self.logger = logger
+
+        # Set up file logging if a path is provided
+        if log_file_path:
+            try:
+                self._file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+                self.logger.addHandler(self._file_handler)
+            except Exception as e:
+                self.logger.error(f"Failed to set up file logging to {log_file_path}: {e}")
 
         if self._use_json_logging:
             self.set_json_logging()
@@ -323,6 +337,17 @@ class ErrorHandler:
         """
         for handler in self.logger.handlers:
             handler.setFormatter(formatter)
+        if self._file_handler:
+            self._file_handler.setFormatter(formatter)
+
+    def shutdown(self) -> None:
+        """
+        Shuts down the error handler, closing any open file handlers.
+        """
+        if self._file_handler:
+            self.logger.removeHandler(self._file_handler)
+            self._file_handler.close()
+            self._file_handler = None
 
     def register_callback(self, callback: ErrorCallback) -> None:
         """Register a callback to be called on every error."""
@@ -485,6 +510,7 @@ def get_default_handler() -> ErrorHandler:
         if not _default_global_error_handler.logger.handlers:
             handler = logging.StreamHandler()
             _default_global_error_handler.logger.addHandler(handler)
+        atexit.register(_default_global_error_handler.shutdown) # Register shutdown
     return _default_global_error_handler
 
 
