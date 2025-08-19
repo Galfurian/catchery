@@ -12,7 +12,7 @@ if os.path.exists(LOG_FILE):
 
 # Get the default handler, specifying a log file
 # This will create a FileHandler for the logger used by the ErrorHandler
-handler = ErrorHandler(log_file_path=LOG_FILE)
+handler = ErrorHandler(text_log_path=LOG_FILE)
 
 # Set its log level to DEBUG to capture all messages
 handler.get_logger().setLevel(logging.DEBUG)

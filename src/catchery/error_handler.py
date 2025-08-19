@@ -6,14 +6,16 @@ Centralized error handling and logging system.
 # Imports & Type Aliases
 # =============================================================================
 
+import atexit
+import datetime
 import json
 import logging
 import threading
-import atexit # New import
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
+from io import TextIOWrapper
 from typing import Any, Callable, Deque, Dict, List, Protocol, Type, TypeVar
 
 T = TypeVar("T")
@@ -250,7 +252,8 @@ class ErrorHandler:
         error_history_maxlen: int = 1000,
         use_json_logging: bool = False,
         plain_text_formatter: logging.Formatter | None = None,
-        log_file_path: str | None = None,  # New parameter for file logging
+        text_log_path: str | None = None,
+        json_log_path: str | None = None,
     ) -> None:
         """
         Initialize the ErrorHandler.
@@ -260,7 +263,9 @@ class ErrorHandler:
             error_history_maxlen: Max number of errors to keep in history.
             use_json_logging: If True, logs in JSON format.
             plain_text_formatter: Optional custom formatter for plain text logging.
-            log_file_path: Optional path to a file for persistent logging.
+            text_log_path: Optional path to a file for persistent logging.
+            json_log_path: Optional path to a JSON Lines file for storing
+                                 structured AppError objects.
         """
         self.error_history: Deque[AppError] = deque(maxlen=error_history_maxlen)
         self._lock = threading.Lock()
@@ -269,24 +274,35 @@ class ErrorHandler:
         self._plain_text_formatter = plain_text_formatter or logging.Formatter(
             "[%(asctime)s] %(levelname)-8s: %(message)s", datefmt="%H:%M:%S"
         )
-        self._file_handler: logging.FileHandler | None = None  # New attribute for file handler
+        self._text_log_file: logging.FileHandler | None = None
+        self._json_log_file: TextIOWrapper | None = None
 
         if logger is None:
             self.logger = logging.getLogger("ErrorHandler")
-            # Add a default StreamHandler if no logger is provided and no handlers exist
             if not self.logger.handlers:
                 stream_handler = logging.StreamHandler()
                 self.logger.addHandler(stream_handler)
         else:
             self.logger = logger
 
-        # Set up file logging if a path is provided
-        if log_file_path:
+        if text_log_path:
             try:
-                self._file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
-                self.logger.addHandler(self._file_handler)
+                self._text_log_file = logging.FileHandler(
+                    text_log_path, encoding="utf-8"
+                )
+                self.logger.addHandler(self._text_log_file)
             except Exception as e:
-                self.logger.error(f"Failed to set up file logging to {log_file_path}: {e}")
+                self.logger.error(
+                    f"Failed to set up file logging to {text_log_path}: {e}"
+                )
+
+        if json_log_path:
+            try:
+                self._json_log_file = open(json_log_path, "a", encoding="utf-8")
+            except IOError as e:
+                self.logger.error(
+                    f"Failed to open JSON error log file {json_log_path}: {e}"
+                )
 
         if self._use_json_logging:
             self.set_json_logging()
@@ -337,17 +353,20 @@ class ErrorHandler:
         """
         for handler in self.logger.handlers:
             handler.setFormatter(formatter)
-        if self._file_handler:
-            self._file_handler.setFormatter(formatter)
+        if self._text_log_file:
+            self._text_log_file.setFormatter(formatter)
 
     def shutdown(self) -> None:
         """
         Shuts down the error handler, closing any open file handlers.
         """
-        if self._file_handler:
-            self.logger.removeHandler(self._file_handler)
-            self._file_handler.close()
-            self._file_handler = None
+        if self._text_log_file:
+            self.logger.removeHandler(self._text_log_file)
+            self._text_log_file.close()
+            self._text_log_file = None
+        if self._json_log_file:
+            self._json_log_file.close()
+            self._json_log_file = None
 
     def register_callback(self, callback: ErrorCallback) -> None:
         """Register a callback to be called on every error."""
@@ -402,6 +421,27 @@ class ErrorHandler:
             except Exception:
                 # Prevent a faulty callback from disrupting error handling
                 self.logger.exception("Error in error handler callback")
+
+        # Write structured error to JSON log file if enabled
+        if self._json_log_file:
+            try:
+                # Prepare the error data for JSON logging.
+                error_data = {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "message": error.message,
+                    "severity": error.severity.value,
+                    "context": error.context,
+                    "exception": str(error.exception) if error.exception else None,
+                }
+                # Write the structured error to the JSON log file.
+                self._json_log_file.write(json.dumps(error_data) + "\n")
+                # Ensure it's written to disk immediately.
+                self._json_log_file.flush()
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to write structured error to JSON log file: {e}",
+                    exc_info=True,
+                )
 
         # Determine the appropriate logging method based on severity.
         log_method = {
@@ -510,7 +550,7 @@ def get_default_handler() -> ErrorHandler:
         if not _default_global_error_handler.logger.handlers:
             handler = logging.StreamHandler()
             _default_global_error_handler.logger.addHandler(handler)
-        atexit.register(_default_global_error_handler.shutdown) # Register shutdown
+        atexit.register(_default_global_error_handler.shutdown)  # Register shutdown
     return _default_global_error_handler
 
 
@@ -604,24 +644,31 @@ def re_raise_chained(
             try:
                 return func(*args, **kwargs)
             except Exception as original_exception:
-                # Conditionally log the original exception if it's not a ChainedReRaiseError
+                # Conditionally log the original exception if it's not a
+                # ChainedReRaiseError.
                 if not isinstance(original_exception, ChainedReRaiseError):
+                    _msg = f"{type(original_exception).__name__} "
+                    _msg += f"({func.__name__}): "
+                    _msg += f"{original_exception}"
                     handler.handle(
-                        error=f"{type(original_exception).__name__} ({func.__name__}): {original_exception}",
+                        error=_msg,
                         severity=severity,
                         context=runtime_context,
                         exception=original_exception,
                         raise_exception=False,
                     )
                 # Log the new exception being raised.
+                _msg = f"{new_exception_type.__name__}"
+                _msg += f" ({func.__name__}): {message}"
                 handler.handle(
-                    error=f"{new_exception_type.__name__} ({func.__name__}): {message}",
+                    error=_msg,
                     severity=severity,
                     context=runtime_context,
                     exception=new_exception_type(message),
                     raise_exception=False,
                 )
-                # Re-raise the new exception, explicitly chaining it to the original
+                # Re-raise the new exception, explicitly chaining it to the
+                # original.
                 raise new_exception_type(message) from original_exception
 
         return wrapper
