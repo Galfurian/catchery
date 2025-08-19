@@ -563,6 +563,50 @@ def set_default_handler(handler: ErrorHandler | None) -> None:
     _default_global_error_handler = handler
 
 
+def setup_catchery_logging(
+    level: int = logging.INFO,
+    text_log_path: str | None = None,
+    json_log_path: str | None = None,
+    use_json_logging: bool = False,
+    error_history_maxlen: int = 1000,
+) -> ErrorHandler:
+    """
+    Sets up and returns a new default ErrorHandler instance with common logging
+    configurations.
+
+    This function simplifies the initialization of the ErrorHandler by providing
+    a convenient way to configure logging levels, file outputs, and other
+    common settings.
+
+    Args:
+        level: The logging level for the handler (e.g., logging.INFO, logging.DEBUG).
+               Defaults to logging.INFO.
+        text_log_path: Optional path to a file for plain text logging.
+        json_log_path: Optional path to a JSON Lines file for structured AppError objects.
+        use_json_logging: If True, the main logger will use JSON formatting.
+                          Defaults to False.
+        error_history_maxlen: Maximum number of errors to keep in history.
+                              Defaults to 1000.
+
+    Returns:
+        The newly configured default ErrorHandler instance.
+
+    Example:
+        >>> from catchery.error_handler import setup_catchery_logging, log_error
+        >>> handler = setup_catchery_logging(level=logging.DEBUG, text_log_path="app.log")
+        >>> log_error("Something went wrong!")
+    """
+    handler = ErrorHandler(
+        error_history_maxlen=error_history_maxlen,
+        use_json_logging=use_json_logging,
+        text_log_path=text_log_path,
+        json_log_path=json_log_path,
+    )
+    handler.get_logger().setLevel(level)
+    set_default_handler(handler)
+    return handler
+
+
 # ==============================================================================
 # VALIDATION HELPERS
 # ==============================================================================
