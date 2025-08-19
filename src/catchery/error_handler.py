@@ -11,6 +11,7 @@ import datetime
 import json
 import logging
 import threading
+import copy # New import for deepcopy
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -48,6 +49,10 @@ class AppError:
     severity: ErrorSeverity
     context: dict[str, Any]
     exception: Exception | None = None
+
+    def __post_init__(self):
+        # Ensure context is always a deep copy to prevent external modification
+        self.context = copy.deepcopy(self.context)
 
 
 class ChainedReRaiseError(RuntimeError):
@@ -93,23 +98,8 @@ class JsonFormatter(logging.Formatter):
             if key not in log_record and not key.startswith("_"):
                 log_record[key] = value
         # Ensure all values in log_record are JSON serializable
-        serializable_log_record = self._safe_json_serialize(log_record)
+        serializable_log_record = ErrorHandler._safe_json_serialize(log_record)
         return json.dumps(serializable_log_record)
-
-    def _safe_json_serialize(self, obj: Any) -> Any:
-        """
-        Recursively converts non-JSON-serializable objects within a structure
-        to their string representation.
-        """
-        if isinstance(obj, dict):
-            return {k: self._safe_json_serialize(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple)):
-            return [self._safe_json_serialize(elem) for elem in obj]
-        try:
-            json.dumps(obj)
-            return obj
-        except (TypeError, OverflowError):
-            return repr(obj)
 
 
 class ErrorHandler:
@@ -127,6 +117,22 @@ class ErrorHandler:
     """
 
     _thread_local = threading.local()
+
+    @staticmethod
+    def _safe_json_serialize(obj: Any) -> Any:
+        """
+        Recursively converts non-JSON-serializable objects within a structure
+        to their string representation.
+        """
+        if isinstance(obj, dict):
+            return {k: ErrorHandler._safe_json_serialize(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [ErrorHandler._safe_json_serialize(elem) for elem in obj]
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, OverflowError):
+            return repr(obj)
 
     def _get_thread_context(self) -> dict[str, Any]:
         """
@@ -430,7 +436,7 @@ class ErrorHandler:
                     "timestamp": datetime.datetime.now().isoformat(),
                     "message": error.message,
                     "severity": error.severity.value,
-                    "context": error.context,
+                    "context": ErrorHandler._safe_json_serialize(error.context),
                     "exception": str(error.exception) if error.exception else None,
                 }
                 # Write the structured error to the JSON log file.
