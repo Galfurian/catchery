@@ -7,11 +7,11 @@ Centralized error handling and logging system.
 # =============================================================================
 
 import atexit
+import copy  # New import for deepcopy
 import datetime
 import json
 import logging
 import threading
-import copy # New import for deepcopy
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -128,6 +128,12 @@ class ErrorHandler:
             return {k: ErrorHandler._safe_json_serialize(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
             return [ErrorHandler._safe_json_serialize(elem) for elem in obj]
+        elif isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
+            return obj.isoformat()
+        elif isinstance(obj, Enum):
+            return obj.value
+        elif isinstance(obj, Exception):
+            return str(obj)
         try:
             json.dumps(obj)
             return obj
@@ -588,7 +594,8 @@ def setup_catchery_logging(
         level: The logging level for the handler (e.g., logging.INFO, logging.DEBUG).
                Defaults to logging.INFO.
         text_log_path: Optional path to a file for plain text logging.
-        json_log_path: Optional path to a JSON Lines file for structured AppError objects.
+        json_log_path: Optional path to a JSON Lines file for storing
+                             structured AppError objects.
         use_json_logging: If True, the main logger will use JSON formatting.
                           Defaults to False.
         error_history_maxlen: Maximum number of errors to keep in history.
@@ -599,7 +606,8 @@ def setup_catchery_logging(
 
     Example:
         >>> from catchery.error_handler import setup_catchery_logging, log_error
-        >>> handler = setup_catchery_logging(level=logging.DEBUG, text_log_path="app.log")
+        >>> handler = setup_catchery_logging(
+            level=logging.DEBUG, text_log_path="app.log")
         >>> log_error("Something went wrong!")
     """
     handler = ErrorHandler(
