@@ -68,13 +68,13 @@ def _attempt_conversion_with_fallback(
                 f"Expected {expected_type_name}, "
                 f"got {_get_type_display_name(type(processed_object))}. "
                 f"Using default.",
-                ctx,
+                {**ctx, "_from_validation_function": True},
             )
             return None
         except Exception as e:
             log_warning(
                 f"Custom conversion of '{name}' failed: {e}. Using default.",
-                {**ctx, "error_details": str(e)},
+                {**ctx, "error_details": str(e), "_from_validation_function": True},
             )
             return None
 
@@ -101,7 +101,7 @@ def _attempt_conversion_with_fallback(
                 f"Default conversion of '{name}' "
                 f"to {_get_type_display_name(t)} "
                 f"failed: {e}. Using default.",
-                {**ctx, "error_details": str(e)},
+                {**ctx, "error_details": str(e), "_from_validation_function": True},
             )
     return None
 
@@ -325,7 +325,7 @@ def ensure_object(
         log_warning(
             f"'{name}' is None and not allowed for expected type(s) "
             f"{expected_type_name}. Using default.",
-            ctx,
+            {**ctx, "_from_validation_function": True},
         )
         return default
 
@@ -334,7 +334,7 @@ def ensure_object(
         log_warning(
             f"'{name}' is not of expected type(s) {expected_type_name}. "
             f"Attempting conversion.",
-            ctx,
+            {**ctx, "_from_validation_function": True},
         )
 
         processed_object = _attempt_conversion_with_fallback(
@@ -356,14 +356,14 @@ def ensure_object(
             if not validator(processed_object):
                 log_warning(
                     f"'{name}' failed validation. Using default.",
-                    ctx,
+                    {**ctx, "_from_validation_function": True},
                 )
                 return default
         except Exception as e:
             log_warning(
                 f"Validator for '{name}' raised an exception: {e}. "
                 f"Using default object.",
-                {**ctx, "error_details": str(e)},
+                {**ctx, "error_details": str(e), "_from_validation_function": True},
             )
             return default
 
@@ -424,7 +424,7 @@ def ensure_enum(
     log_warning(
         f"'{name}' is not a valid member of {enum_class.__name__}. "
         f"Attempted value: {obj}. Using default.",
-        ctx,
+        {**ctx, "_from_validation_function": True},
     )
     return default
 
@@ -469,6 +469,7 @@ def ensure_string(
                 "actual_type": actual_type_name,
                 "expected_type": "str",
                 "default_object_used": default,
+                "_from_validation_function": True,
             },
         )
         return str(obj) if obj is not None else default
@@ -515,6 +516,7 @@ def ensure_non_negative_int(
                 "actual_type": actual_type_name,
                 "expected_type": "int",
                 "default_object_used": default,
+                "_from_validation_function": True,
             },
         )
         return max(0, int(obj) if isinstance(obj, (int, float)) else default)
@@ -583,6 +585,7 @@ def ensure_int_in_range(
                 "min_val": min_val,
                 "max_val": max_val,
                 "default_object_used": default,
+                "_from_validation_function": True,
             },
         )
 
@@ -661,6 +664,7 @@ def ensure_list_of_type(
                 "actual_type": actual_type_name,
                 "expected_type": "list",
                 "default_object_used": default,
+                "_from_validation_function": True,
             },
         )
         return default
@@ -688,6 +692,7 @@ def ensure_list_of_type(
                         "index": i,
                         "object_attempted": item,
                         "error_details": "Item failed validation",
+                        "_from_validation_function": True,
                     },
                 )
                 # Skip invalid items
@@ -722,6 +727,7 @@ def ensure_list_of_type(
                         "index": i,
                         "object_attempted": item,
                         "error_details": message,
+                        "_from_validation_function": True,
                     },
                 )
 
@@ -762,6 +768,7 @@ def safe_get_attribute(obj: Any, name: str, default: Any = None) -> Any:
                 "actual_type": _get_type_display_name(type(obj)),
                 "default_object_used": default,
                 "error_details": f"Missing attribute '{name}'",
+                "_from_validation_function": True,
             },
         )
         return default
