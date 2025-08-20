@@ -32,83 +32,77 @@ def _get_type_display_name(obj: Any) -> str:
         return type(obj).__name__
 
 
-def _attempt_default_conversion(
-    obj: Any,
-    expected_type: Any,
-    name: str,
-    ctx: dict[str, Any],
-) -> Any | None:
-    """
-    Attempts to perform a default conversion for common types (str, int, float).
-    Logs a warning if conversion fails.
-
-    Args:
-        obj (Any): The object to convert.
-        expected_type (Any): The expected type to convert to.
-        name (str): The name of the object, used for logging.
-        ctx (dict[str, Any]): The context for logging.
-
-    Returns:
-        (Any | None): The converted object or None if conversion failed.
-    """
-    try:
-        if expected_type is str and not isinstance(obj, str):
-            return str(obj)
-        elif expected_type is int and not isinstance(obj, int):
-            return int(obj)
-        elif expected_type is float and not isinstance(obj, float):
-            return float(obj)
-        elif expected_type is bool and not isinstance(obj, bool):
-            return bool(obj)
-    except (ValueError, TypeError) as e:
-        log_warning(
-            f"Default conversion of '{name}' "
-            f"to {_get_type_display_name(expected_type)} "
-            f"failed: {e}. Using default.",
-            {**ctx, "error_details": str(e)},
-        )
-    return None
-
-
-def _attempt_conversion(
+def _attempt_conversion_with_fallback(
     obj: Any,
     name: str,
     expected_type: Any,
-    expected_type_name: str,
-    converter: Callable[[Any], Any],
     ctx: dict[str, Any],
+    converter: Callable[[Any], Any] | None = None,
 ) -> Any | None:
     """
-    Attempts to convert an object using a custom converter, handling errors and
-    type mismatches.
+    Attempts to convert an object using a custom converter if provided,
+    otherwise attempts default conversions for common types.
+    Logs a warning if conversion fails or results in a type mismatch.
 
     Args:
         obj (Any): The object to convert.
         name (str): The name of the object, used for logging.
-        expected_type (Any): The expected type to convert to.
-        expected_type_name (str): The human-readable name of the expected type.
-        converter (Callable[[Any], Any]): The conversion function to apply.
+        expected_type (Any): The expected type(s) to convert to.
         ctx (dict[str, Any]): The context for logging.
+        converter (Callable[[Any], Any] | None): An optional custom conversion
+            function to apply.
 
     Returns:
         (Any | None): The converted object or None if conversion failed.
     """
-    try:
-        processed_object = converter(obj)
-        if isinstance(processed_object, expected_type):
-            return processed_object
-        log_warning(
-            f"Converter for '{name}' returned wrong type. "
-            f"Expected {expected_type_name}, "
-            f"got {_get_type_display_name(type(processed_object))}. "
-            f"Using default.",
-            ctx,
-        )
-    except Exception as e:
-        log_warning(
-            f"Conversion of '{name}' failed: {e}. Using default.",
-            {**ctx, "error_details": str(e)},
-        )
+    expected_type_name = _get_type_display_name(expected_type)
+
+    # Try custom converter first
+    if converter:
+        try:
+            processed_object = converter(obj)
+            if isinstance(processed_object, expected_type):
+                return processed_object
+            log_warning(
+                f"Converter for '{name}' returned wrong type. "
+                f"Expected {expected_type_name}, "
+                f"got {_get_type_display_name(type(processed_object))}. "
+                f"Using default.",
+                ctx,
+            )
+            return None
+        except Exception as e:
+            log_warning(
+                f"Custom conversion of '{name}' failed: {e}. Using default.",
+                {**ctx, "error_details": str(e)},
+            )
+            return None
+
+    # Fallback to default conversions
+    target_types = (
+        expected_type if isinstance(expected_type, tuple) else (expected_type,)
+    )
+
+    for t in target_types:
+        try:
+            if t is str and not isinstance(obj, str):
+                return str(obj)
+            elif t is int and not isinstance(obj, int):
+                return int(obj)
+            elif t is float and not isinstance(obj, float):
+                return float(obj)
+            elif t is bool and not isinstance(obj, bool):
+                return bool(obj)
+            # If obj is already of the current target type, return it
+            if isinstance(obj, t):
+                return obj
+        except (ValueError, TypeError) as e:
+            log_warning(
+                f"Default conversion of '{name}' "
+                f"to {_get_type_display_name(t)} "
+                f"failed: {e}. Using default.",
+                {**ctx, "error_details": str(e)},
+            )
     return None
 
 
@@ -343,40 +337,13 @@ def ensure_object(
             ctx,
         )
 
-        # If we have a converter, let's try to use it.
-        if converter:
-            processed_object = _attempt_conversion(
-                obj,
-                name,
-                expected_type,
-                expected_type_name,
-                converter,
-                ctx,
-            )
-
-        elif isinstance(expected_type, tuple):
-            # Try converting to one of the types in the tuple.
-            for t in expected_type:
-                converted_attempt = _attempt_default_conversion(
-                    obj,
-                    t,
-                    name,
-                    ctx,
-                )
-                if converted_attempt is not None:
-                    processed_object = converted_attempt
-                    break
-            else:  # No break, conversion failed for all types in tuple
-                processed_object = None
-
-        else:
-            # For single expected_type.
-            processed_object = _attempt_default_conversion(
-                obj,
-                expected_type,
-                name,
-                ctx,
-            )
+        processed_object = _attempt_conversion_with_fallback(
+            obj,
+            name,
+            expected_type,
+            ctx,
+            converter,
+        )
 
     # If we failed to process the object (i.e., it's None after conversion
     # attempts), return the default value.
