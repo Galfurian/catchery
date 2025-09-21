@@ -1,27 +1,25 @@
 # Changelog
 
+## 0.6.4 - 2025-09-21
+
+- (e74eecf) feature(logging): add log_debug and DEBUG severity support
+
 ## 0.6.3 - 2025-09-21
 
 - (07589ce) documentation: update changelog format and add copilot instructions
 
 ## 0.6.2 - 2025-08-20
 
-- (7f10e4c) Release 0.6.2
-- (4f2d4c8) chore(release): prepare for version 0.6.2
 - (38260a0) feat(logging): add validation warning suppression
 - (fb65873) refactor(validation): consolidate conversion functions and fix bug
 - (b143f29) refactor(error_handler): improve JSON serialization and fix linting
 
 ## 0.6.1 - 2025-08-19
 
-- (9dd8730) Release 0.6.1
-- (fa9102e) chore(release): Release 0.6.1
 - (127c3ec) docs(readme): Refactor Quick Start examples for clarity
 
 ## 0.6.0 - 2025-08-19
 
-- (0f8ac28) Release 0.6.0
-- (d1e7f06) chore(release): Release 0.6.0
 - (72a45b5) perf(error_handling): Improve AppError context handling and JSON serialization
 - (19c8863) feat(error_handling): Add setup_catchery_logging for simplified configuration
 - (7e2aee7) refactor(error_handling): Rename log parameters and refactor error messages
@@ -31,14 +29,10 @@
 
 ## 0.5.0 - 2025-08-14
 
-- (c569af3) Release 0.5.0
-- (3ce179d) chore(release): Release 0.5.0
 - (d696d48) feat(error_handling): Add `re_raise_chained` decorator for exception chaining
 
 ## 0.4.0 - 2025-08-14
 
-- (50eda71) Release 0.4.0
-- (1faf0c3) chore(release): Prepare for version 0.4.0
 - (7f236c0) feat(validation): Add ensure_enum function with tests and example
 - (f4186a1) Resolve conflicts.
 - (91489c9) refactor(error_handler, validation): improve context management and validation logic
@@ -56,12 +50,10 @@
 
 ## 0.3.0 - 2025-08-14
 
-- (589bed4) Release 0.3.0
 - (6182b7b) refactor(core): Improve type hinting and validation logic
 
 ## 0.0.2 - 2025-08-12
 
-- (ced5f31) Release 0.2.0
 - (745c6cf) docs(gemini_config): Update commit message example in GEMINI.md
 - (0e2d0f7) feat(validation): Add ensure_value function for robust type validation and conversion
 - (751a510) fix(build): Address setuptools deprecation warnings in pyproject.toml

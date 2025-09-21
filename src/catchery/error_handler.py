@@ -32,6 +32,7 @@ class ErrorSeverity(Enum):
     Enumeration of error severity levels for the error handling system.
     """
 
+    DEBUG = "debug"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -519,10 +520,9 @@ class ErrorHandler:
                     exc_info=True,
                 )
 
-
-
         # Determine the appropriate logging method based on severity.
         log_method = {
+            ErrorSeverity.DEBUG: self.logger.debug,
             ErrorSeverity.LOW: self.logger.info,
             ErrorSeverity.MEDIUM: self.logger.warning,
             ErrorSeverity.HIGH: self.logger.error,
@@ -828,6 +828,40 @@ def re_raise_chained(
 # ==============================================================================
 # CONVENIENCE LOGGING FUNCTIONS
 # ==============================================================================
+
+
+def log_debug(
+    message: str,
+    context: Dict[str, Any] | None = None,
+    exception: Exception | None = None,
+    raise_exception: bool = False,
+    chain_exception: Exception | None = None,
+) -> None:
+    """
+    Logs a debug-level message using the global error handler.
+
+    Args:
+        message (str):
+            The primary message describing the debug event.
+        context (Dict[str, Any] | None):
+            An optional dictionary of additional context to include with the
+            log.
+        exception (Exception | None):
+            An optional exception object to include with the log.
+        raise_exception (bool):
+            If True, re-raises the `exception` after handling.
+        chain_exception (Exception | None):
+            An optional exception to chain with `exception`.
+    """
+    get_default_handler().handle(
+        message,
+        ErrorSeverity.DEBUG,
+        context,
+        exception,
+        raise_exception=raise_exception,
+        chain_exception=chain_exception,
+        stack_offset=1,
+    )
 
 
 def log_info(
