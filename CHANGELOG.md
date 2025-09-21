@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.1 - 2025-08-19
+
+### Features
+
+- Added `setup_catchery_logging` for simplified configuration.
+- Implemented incremental JSON logging for structured `AppError` objects.
+
+### Refactor
+
+- Renamed `log_file_path` to `text_log_path` and `error_json_log_path` to `json_log_path` for clarity.
+- Refactored error message construction in `re_raise_chained`.
+- Ensured immutability of `AppError` context by deep copying it.
+- Enhanced robustness of JSON logging by using a shared `_safe_json_serialize` utility.
+
+### Documentation
+
+- Revamped `README.md` with comprehensive documentation and refactored Quick Start examples.
+
 ## 0.5.0 - 2025-08-14
 
 ### Features
