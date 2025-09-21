@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 - 2025-09-21
+
+- (07589ce) documentation: update changelog format and add copilot instructions
+
 ## 0.6.2 - 2025-08-20
 
 - (7f10e4c) Release 0.6.2
