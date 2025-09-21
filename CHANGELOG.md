@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.5 - 2025-09-21
+
+- (46adcf0) feature(logging): expose log_debug in public API
+
 ## 0.6.4 - 2025-09-21
 
 - (e74eecf) feature(logging): add log_debug and DEBUG severity support
