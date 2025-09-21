@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2 - 2025-08-20
+
+### Features
+
+- Added a mechanism to suppress validation warnings from `ensure` functions.
+
+### Refactor
+
+- Consolidated `_attempt_default_conversion` and `_attempt_conversion` into `_attempt_conversion_with_fallback`.
+- Updated `ensure_object` to use the new conversion function.
+- Improved `_attempt_conversion_with_fallback` to correctly handle tuple expected types.
+- Updated `log_warning` calls in validation functions to include a flag for validation warnings.
+
 ## 0.6.1 - 2025-08-19
 
 ### Features
