@@ -12,7 +12,8 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Deque, Dict, List, Protocol, TypeVar
+from functools import wraps
+from typing import Any, Callable, Deque, Dict, List, Protocol, Type, TypeVar
 
 T = TypeVar("T")
 
@@ -521,6 +522,43 @@ def safe_operation(
 
         return wrapper
 
+    return decorator
+
+
+def re_raise_chained(
+    new_exception_type: Type[Exception],
+    message: str,
+    severity: ErrorSeverity = ErrorSeverity.HIGH,
+    context: Dict[str, Any] | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """
+    A decorator that catches exceptions from the decorated function, logs them,
+    and then re-raises a new, specified exception, chaining it to the original.
+
+    Args:
+        new_exception_type (Type[Exception]): The type of exception to re-raise.
+        message (str): The message for the new exception.
+        severity (ErrorSeverity): The severity level for logging the original error.
+        context (Dict[str, Any] | None): Additional context for logging.
+    """
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return func(*args, **kwargs)
+            except Exception as original_exception:
+                handler = get_default_handler()
+                # Log the original exception with its context
+                handler.handle(
+                    error=f"Error in '{func.__name__}': {original_exception}",
+                    severity=severity,
+                    context={**(context or {}), "function_name": func.__name__},
+                    exception=original_exception,
+                    raise_exception=False # Log it, but don't re-raise the original
+                )
+                # Re-raise the new exception, explicitly chaining it to the original
+                raise new_exception_type(message) from original_exception
+        return wrapper
     return decorator
 
 

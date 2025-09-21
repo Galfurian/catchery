@@ -11,6 +11,7 @@ from .error_handler import (
     log_error,
     log_info,
     log_warning,
+    re_raise_chained,
     safe_operation,
     set_default_handler,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "safe_operation",
     "set_default_handler",
     "get_default_handler",
+    "re_raise_chained",
     # Validation functions.
     "validate_object",
     "validate_type",
