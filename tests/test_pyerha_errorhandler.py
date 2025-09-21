@@ -1,21 +1,33 @@
 import logging
 import threading
-import json
+from typing import Generator, List
+
 import pytest
 
-from typing import List, Generator
-
 # Explicitly import from catchery modules.
-from catchery import *
+from catchery import (
+    AppError,
+    ErrorHandler,
+    ErrorSeverity,
+    ensure_int_in_range,
+    ensure_list_of_type,
+    ensure_non_negative_int,
+    ensure_string,
+    safe_get_attribute,
+    set_default_handler,
+    validate_object,
+    validate_type,
+)
 
 
 @pytest.fixture
 def handler() -> Generator[ErrorHandler, None, None]:
     """Fixture to provide a clean ErrorHandler instance for each test."""
     # Setup: Create a new handler for each test to ensure isolation
-    h = ErrorHandler(error_history_maxlen=100)
+    h = ErrorHandler(use_json_logging=True)
     yield h
-    # Teardown: Can be added here if needed, e.g., clearing global state
+    # Teardown: Reset the global handler to ensure a clean state for the next test
+    set_default_handler(None)
 
 
 def test_basic_logging(handler: ErrorHandler) -> None:
@@ -52,7 +64,7 @@ def test_callbacks(handler: ErrorHandler) -> None:
 
 def test_context_manager(handler: ErrorHandler) -> None:
     """Tests that the context manager correctly adds contextual data."""
-    with handler.context(user_id=42):
+    with handler.Context(user_id=42):
         handler.handle("With context", ErrorSeverity.LOW)
     last = handler.error_history[-1]
     assert last.context.get("user_id") == 42
@@ -60,7 +72,7 @@ def test_context_manager(handler: ErrorHandler) -> None:
 
 def test_capture_errors(handler: ErrorHandler) -> None:
     """Tests the capture_errors context manager."""
-    with handler.capture_errors(handler) as errors:
+    with handler.CaptureErrors(handler) as errors:
         handler.handle("Captured", ErrorSeverity.LOW)
     assert errors and errors[0].message == "Captured"
 
@@ -101,7 +113,7 @@ def test_exception_chaining(handler: ErrorHandler) -> None:
 
 # Test validate_object
 def test_validate_object_none():
-    with pytest.raises(Exception, match="Required value 'test_obj' is None"):
+    with pytest.raises(Exception, match="Required object 'test_obj' is None"):
         validate_object(None, "test_obj")
 
 
@@ -130,13 +142,13 @@ def test_validate_object_missing_attrs():
 
     obj = MyClass()
     with pytest.raises(
-        Exception, match="test_obj missing required attributes: \['attr2'\]"
+        Exception, match=r"test_obj missing required attributes: \['attr2'\]"
     ):
         validate_object(obj, "test_obj", attributes=["attr1", "attr2"])
 
 
 def test_validate_object_with_context():
-    with pytest.raises(Exception, match="Required value 'test_obj' is None"):
+    with pytest.raises(Exception, match="Required object 'test_obj' is None"):
         validate_object(None, "test_obj", context={"source": "test"})
 
 
@@ -152,7 +164,7 @@ def test_require_type_invalid():
 
 
 def test_require_type_none():
-    with pytest.raises(Exception, match="Required value 'test_param' is None"):
+    with pytest.raises(Exception, match="Required object 'test_param' is None"):
         validate_type(None, "test_param", str)
 
 
@@ -317,7 +329,12 @@ def test_ensure_list_of_type_non_list_input(caplog):
 
 def test_ensure_list_of_type_mixed_types_no_converter(caplog):
     with caplog.at_level(logging.WARNING):
-        result = ensure_list_of_type([1, "2", 3.0, None], "test_param", int)
+        result = ensure_list_of_type(
+            values=[1, "2", 3.0, None],
+            name="test_param",
+            expected_type=int,
+            allow_none=False,
+        )
         assert result == [1, 2, 3]
 
 
@@ -327,13 +344,14 @@ def test_ensure_list_of_type_with_converter(caplog):
 
     with caplog.at_level(logging.WARNING):
         result = ensure_list_of_type(
-            [1, "2", 3.0, "invalid"],
-            "test_param",
-            int,
+            values=[1, "2", 3.0, "invalid"],
+            name="test_param",
+            expected_type=int,
+            allow_none=False,
             converter=str_to_int_converter,
         )
         assert result == [1, 2, 3]
-        assert "test_param[3] conversion failed, skipping item: invalid" in caplog.text
+        assert "test_param[3] failed validation, skipping item: invalid" in caplog.text
 
 
 def test_ensure_list_of_type_with_validator(caplog):
@@ -349,11 +367,11 @@ def test_ensure_list_of_type_with_validator(caplog):
 
 
 def test_ensure_list_of_type_converter_and_validator(caplog):
-    def converter(value: str) -> int:
-        return int(value)
+    def converter(object: str) -> int:
+        return int(object)
 
-    def is_positive(value: int) -> bool:
-        return value > 0
+    def is_positive(object: int) -> bool:
+        return object > 0
 
     with caplog.at_level(logging.WARNING):
         result = ensure_list_of_type(

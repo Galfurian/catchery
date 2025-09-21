@@ -1,6 +1,116 @@
-from typing import Any, Callable, Dict, Union
+"""
+This module contains support functions for validating data.
+"""
 
-from .error_handler import ERROR_HANDLER, ErrorSeverity, log_warning
+from enum import Enum
+from typing import Any, Callable, Dict, Type, Union
+
+from .error_handler import ErrorSeverity, get_default_handler, log_warning
+
+# =============================================================================
+# SUPPORT FUNCTIONS
+# =============================================================================
+
+
+def _get_type_display_name(obj: Any) -> str:
+    """
+    Returns a human-readable name for a given object's type or a type itself.
+    Handles cases where expected_type might be a tuple of types.
+
+    Args:
+        obj (Any): The object or type to get the display name for.
+
+    Returns:
+        (str): The human-readable name of the type.
+    """
+    if isinstance(obj, type):
+        return obj.__name__
+    elif isinstance(obj, tuple):
+        type_list = ", ".join(_get_type_display_name(t) for t in obj)
+        return f"({type_list})"
+    else:
+        return type(obj).__name__
+
+
+def _attempt_default_conversion(
+    obj: Any,
+    expected_type: Any,
+    name: str,
+    ctx: dict[str, Any],
+) -> Any | None:
+    """
+    Attempts to perform a default conversion for common types (str, int, float).
+    Logs a warning if conversion fails.
+
+    Args:
+        obj (Any): The object to convert.
+        expected_type (Any): The expected type to convert to.
+        name (str): The name of the object, used for logging.
+        ctx (dict[str, Any]): The context for logging.
+
+    Returns:
+        (Any | None): The converted object or None if conversion failed.
+    """
+    try:
+        if expected_type is str and not isinstance(obj, str):
+            return str(obj)
+        elif expected_type is int and not isinstance(obj, int):
+            return int(obj)
+        elif expected_type is float and not isinstance(obj, float):
+            return float(obj)
+        elif expected_type is bool and not isinstance(obj, bool):
+            return bool(obj)
+    except (ValueError, TypeError) as e:
+        log_warning(
+            f"Default conversion of '{name}' "
+            f"to {_get_type_display_name(expected_type)} "
+            f"failed: {e}. Using default.",
+            {**ctx, "error_details": str(e)},
+        )
+    return None
+
+
+def _attempt_conversion(
+    obj: Any,
+    name: str,
+    expected_type: Any,
+    expected_type_name: str,
+    converter: Callable[[Any], Any],
+    ctx: dict[str, Any],
+) -> Any | None:
+    """
+    Attempts to convert an object using a custom converter, handling errors and
+    type mismatches.
+
+    Args:
+        obj (Any): The object to convert.
+        name (str): The name of the object, used for logging.
+        expected_type (Any): The expected type to convert to.
+        expected_type_name (str): The human-readable name of the expected type.
+        converter (Callable[[Any], Any]): The conversion function to apply.
+        ctx (dict[str, Any]): The context for logging.
+
+    Returns:
+        (Any | None): The converted object or None if conversion failed.
+    """
+    try:
+        processed_object = converter(obj)
+        if isinstance(processed_object, expected_type):
+            return processed_object
+        log_warning(
+            f"Converter for '{name}' returned wrong type. "
+            f"Expected {expected_type_name}, "
+            f"got {_get_type_display_name(type(processed_object))}. "
+            f"Using default.",
+            ctx,
+        )
+    except Exception as e:
+        log_warning(
+            f"Conversion of '{name}' failed: {e}. Using default.",
+            {**ctx, "error_details": str(e)},
+        )
+    return None
+
 
 # =============================================================================
 # VALIDATION FUNCTIONS
@@ -8,14 +118,14 @@ from .error_handler import ERROR_HANDLER, ErrorSeverity, log_warning
 
 
 def validate_object(
-    value: Any,
+    obj: Any,
     name: str,
-    context: Dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
     attributes: list[str] | None = None,
 ) -> Any:
     """
-    Validates that an object exists and optionally has required
-    attributes/methods.
+    Validates that an object exists and optionally has required attributes or
+    methods.
 
     This function checks if the provided `obj` is not `None`. If `attributes` is
     provided, it further checks if the object possesses all specified
@@ -23,98 +133,127 @@ def validate_object(
     is raised.
 
     Args:
-        obj: The object to validate.
-        name: The human-readable name for the object, used in error messages.
-        context: An optional dictionary of additional context for logging.
-        attributes: An optional list of strings, where each string is the name
-        of an attribute or method that `obj` must possess.
+        obj (Any): The object to validate.
+        name (str): The human-readable name for the object, used in error
+            messages.
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
+        attributes (list[str] | None): An optional list of strings, where each
+            string is the name of an attribute or method that `obj` must
+            possess.
 
     Returns:
-        The validated object if all checks pass.
-
-    Raises:
-        ValueError: If the object is `None` or is missing any of the `attributes`.
+        (Any): The validated object if all checks pass.
     """
-    if value is None:
-        ERROR_HANDLER.handle(
-            error=f"Required value '{name}' is None",
+    # Get the default handler.
+    handler = get_default_handler()
+
+    # Prepare an enriched context.
+    ctx = {
+        **(context or {}),
+        "param_name": name,
+        "object_attempted": obj,
+    }
+
+    # If the object is None, log an error.
+    if obj is None:
+        message = f"Required object '{name}' is None"
+        handler.handle(
+            error=message,
             severity=ErrorSeverity.HIGH,
-            context=context or {},
-            exception=Exception(f"Required value '{name}' is None"),
+            context={**ctx, "error_details": message},
+            exception=ValueError(message),
             raise_exception=True,
         )
+        # We will not reach this line, due to the exception.
+
+    ctx["actual_type"] = _get_type_display_name(type(obj))
+
     # If we have attributes to check, validate them.
     if attributes:
+
         # Gather missing attributes.
         missing_attrs: list[str] = []
         for attribute in attributes:
-            if not hasattr(value, attribute):
+            if not hasattr(obj, attribute):
                 missing_attrs.append(attribute)
+
         # If any attributes are missing, log an error.
         if missing_attrs:
-            ERROR_HANDLER.handle(
-                error=f"{name} missing required attributes: {missing_attrs}",
+            message = f"{name} missing required attributes: {missing_attrs}"
+            handler.handle(
+                error=message,
                 severity=ErrorSeverity.HIGH,
-                context={
-                    **(context or {}),
-                    "object_name": name,
-                    "missing_attributes": missing_attrs,
-                    "object_type": type(value).__name__,
-                },
-                exception=Exception(
-                    f"{name} missing required attributes: {missing_attrs}"
-                ),
+                context={**ctx, "error_details": message},
+                exception=ValueError(message),
                 raise_exception=True,
             )
+            # We will not reach this line, due to the exception.
+
     # If we reach here, the object is valid.
-    return value
+    return obj
 
 
 def validate_type(
-    value: Any,
+    obj: Any,
     name: str,
     expected_type: type,
     context: dict[str, Any] | None = None,
 ) -> Any:
     """
-    Validates that a value is of the specified type.
+    Validates that a object is of the specified type.
 
     If the validation fails, an error is logged and a ValueError is raised.
 
     Args:
-        value: The value to validate.
-        expected_type: The expected type (e.g., str, int, list, etc.).
-        name: The name of the parameter being validated, used in error messages.
-        context: An optional dictionary of additional context for logging.
+        object (Any): The object to validate.
+        name (str): The name of the parameter being validated, used in error
+            messages.
+        expected_type (type): The expected type (e.g., str, int, list, etc.).
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
 
     Returns:
-        The validated value if it is of the expected type.
-
-    Raises:
-        ValueError: If the value is not of the expected type.
+        (Any): The validated object if it is of the expected type.
     """
-    # First, validate that the value is not None.
-    validate_object(value, name, context)
+    # First, validate that the object is not None.
+    validate_object(obj, name, context)
+
     # Then, check the type.
-    if not isinstance(value, expected_type):
-        ERROR_HANDLER.handle(
-            error=f"{name} must be of type {expected_type.__name__}, "
-            f"got: {type(value).__name__}",
+    if not isinstance(obj, expected_type):
+        # Get the handler.
+        handler = get_default_handler()
+
+        # Get the typename of the received object.
+        actual_type_name = _get_type_display_name(type(obj))
+
+        # Get the typename of the expected type.
+        expected_type_name = _get_type_display_name(expected_type)
+
+        # Build the message.
+        message = (
+            f"Invalid {name}: expected {expected_type_name}, "
+            + f"got {actual_type_name}"
+        )
+
+        handler.handle(
+            error=message,
             severity=ErrorSeverity.HIGH,
             context={
                 **(context or {}),
-                "name": name,
-                "expected_type": expected_type.__name__,
-                "actual_type": type(value).__name__,
-                "value": value,
+                "param_name": name,
+                "object_attempted": obj,
+                "expected_type": expected_type_name,
+                "actual_type": actual_type_name,
+                "error_details": message,
             },
-            exception=ValueError(
-                f"Invalid {name}: expected {expected_type.__name__}, "
-                f"got {type(value).__name__}"
-            ),
+            exception=ValueError(message),
             raise_exception=True,
         )
-    return value
+        # We will not reach this line, due to the exception.
+
+    # If we reach here, the object is valid.
+    return obj
 
 
 # =============================================================================
@@ -122,261 +261,301 @@ def validate_type(
 # =============================================================================
 
 
-def ensure_value(
-    value: Any,
+def ensure_object(
+    obj: Any,
     name: str,
-    expected_type: Union[Any, tuple[Any, ...]],
+    expected_type: Any,
     default: Any | None = None,
     context: Dict[str, Any] | None = None,
     allow_none: bool = False,
     validator: Callable[[Any], bool] | None = None,
     converter: Callable[[Any], Any] | None = None,
-) -> Any | None:
+) -> Any:
     """
-    Ensures a value is of the specified type, converting or using a default if necessary.
+    Ensures a object is of the specified type, converting or using a default if
+    necessary.
 
-    This function attempts to validate and/or convert the provided `value` to `expected_type`.
-    If `value` is None and `allow_none` is False, it returns `default`.
-    If `value` is not of `expected_type` and a `converter` is provided, it attempts conversion.
-    If conversion fails or `value` is still not of `expected_type`, it returns `default`.
-    If a `validator` is provided, the value (or converted value) must pass the validation.
-    Warnings are logged for invalid values or failed conversions.
+    This function attempts to validate and/or convert the provided `object` to
+    `expected_type`. If `object` is None and `allow_none` is False, it returns
+    `default`. If `object` is not of `expected_type` and a `converter` is
+    provided, it attempts conversion. If conversion fails or `object` is still
+    not of `expected_type`, it returns `default`. If a `validator` is provided,
+    the object (or converted object) must pass the validation. Warnings are
+    logged for invalid values or failed conversions.
 
     Args:
-        value: The value to be ensured.
-        name: The human-readable name for the value, used in log messages.
-        expected_type: The expected type(s) (e.g., str, int, (int, float)).
-        default: The default value to return if `value` is invalid or cannot be converted.
-        context: An optional dictionary of additional context for logging.
-        allow_none: If True, `None` is considered a valid value if it matches `expected_type`
-                    or if `None` is explicitly in `expected_type`. If False, `None` is
-                    treated as an invalid value unless `default` is `None`.
-        validator: An optional callable that takes the value and returns True if valid, False otherwise.
-        converter: An optional callable that takes the value and attempts to convert it to `expected_type`.
-
+        obj (Any): The object to be ensured.
+        name (str): The human-readable name for the object, used in log
+            messages.
+        expected_type (Any): The expected type(s) (e.g., str, int, tuple).
+        default (Any): The default object to return if `object` is invalid or
+            cannot be converted.
+        context (Dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
+        allow_none (bool): If True, `None` is considered a valid object if it
+            matches `expected_type` or if `None` is explicitly in
+            `expected_type`. If False, `None` is treated as an invalid object
+            unless `default` is `None`.
+        validator (Callable[[Any], bool] | None): An optional callable that
+            takes the object and returns True if valid, False otherwise.
+        converter: An optional callable that takes the object and attempts to
+            convert it to `expected_type`.
     Returns:
-        The validated and/or converted value, or the `default` value.
+        (Any): The validated and/or converted object, or the `default` object.
     """
     # Get the type name.
-    type_name = (
-        expected_type.__name__ if isinstance(expected_type, type) else expected_type
-    )
+    actual_type_name = _get_type_display_name(type(obj))
+
+    # Get the expected_type name.
+    expected_type_name = _get_type_display_name(expected_type)
+
     # Make sure the context is valid.
     ctx: dict[str, Any] = {
         **(context or {}),
-        "name": name,
-        "value": value,
-        "actual": type(value).__name__,
-        "expected": type_name,
+        "param_name": name,
+        "object_attempted": obj,
+        "actual_type": actual_type_name,
+        "expected_type": expected_type_name,
     }
-    # Store the value.
-    processed_value = value
 
-    # Handle None value.
-    if value is None:
+    # Store the object.
+    processed_object = obj
+
+    # Handle None object.
+    if obj is None:
         if allow_none and (
-            (isinstance(expected_type, tuple) and None in expected_type)
-            or expected_type is type(None)
+            expected_type is type(None)
+            or (isinstance(expected_type, tuple) and type(None) in expected_type)
         ):
             return None
         log_warning(
-            f"'{name}' is None and not allowed for expected type(s) {expected_type}. Using default.",
+            f"'{name}' is None and not allowed for expected type(s) "
+            f"{expected_type_name}. Using default.",
             ctx,
         )
         return default
 
     # Attempt conversion if a converter is provided or for common types.
-    if not isinstance(processed_value, expected_type):
+    if not isinstance(processed_object, expected_type):
         log_warning(
-            f"'{name}' is not of expected type(s) {type_name}. Attempting conversion.",
+            f"'{name}' is not of expected type(s) {expected_type_name}. "
+            f"Attempting conversion.",
             ctx,
         )
-        if converter:
-            try:
-                processed_value = converter(value)
-                if not isinstance(processed_value, expected_type):
-                    log_warning(
-                        f"Converter for '{name}' returned wrong type. Expected {type_name}, got {type(processed_value).__name__}. Using default.",
-                        ctx,
-                    )
-                    return default
-            except Exception as e:
-                log_warning(
-                    f"Conversion of '{name}' failed: {e}. Using default.",
-                    {
-                        **ctx,
-                        "error": str(e),
-                    },
-                )
-                return default
-        elif isinstance(expected_type, tuple):
-            # Try converting to one of the types in the tuple
-            converted_successfully = False
-            for t in expected_type:
-                try:
-                    if t is str and not isinstance(value, str):
-                        processed_value = str(value)
-                        converted_successfully = True
-                        break
-                    elif t is int and not isinstance(value, int):
-                        processed_value = int(value)
-                        converted_successfully = True
-                        break
-                    elif t is float and not isinstance(value, float):
-                        processed_value = float(value)
-                        converted_successfully = True
-                        break
-                except (ValueError, TypeError):
-                    continue  # Try next type in tuple
 
-            if not converted_successfully:
-                log_warning(
-                    f"No converter provided and cannot perform default conversion for '{name}'. Using default.",
+        # If we have a converter, let's try to use it.
+        if converter:
+            processed_object = _attempt_conversion(
+                obj,
+                name,
+                expected_type,
+                expected_type_name,
+                converter,
+                ctx,
+            )
+
+        elif isinstance(expected_type, tuple):
+            # Try converting to one of the types in the tuple.
+            for t in expected_type:
+                converted_attempt = _attempt_default_conversion(
+                    obj,
+                    t,
+                    name,
                     ctx,
                 )
-                return default
-        else:  # For single expected_type
-            if expected_type is str and not isinstance(value, str):
-                try:
-                    processed_value = str(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default string conversion of '{name}' failed: {e}. Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            elif expected_type is int and not isinstance(value, int):
-                try:
-                    processed_value = int(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default integer conversion of '{name}' failed: {e}. Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            elif expected_type is float and not isinstance(value, float):
-                try:
-                    processed_value = float(value)
-                except Exception as e:
-                    log_warning(
-                        f"Default float conversion of '{name}' failed: {e}. Using default.",
-                        {
-                            **ctx,
-                            "error": str(e),
-                        },
-                    )
-                    return default
-            else:
-                log_warning(
-                    f"No converter provided and cannot perform default conversion for '{name}'. Using default.",
-                    ctx,
-                )
-                return default
+                if converted_attempt is not None:
+                    processed_object = converted_attempt
+                    break
+            else:  # No break, conversion failed for all types in tuple
+                processed_object = None
+
+        else:
+            # For single expected_type.
+            processed_object = _attempt_default_conversion(
+                obj,
+                expected_type,
+                name,
+                ctx,
+            )
+
+    # If we failed to process the object (i.e., it's None after conversion
+    # attempts), return the default value.
+    if processed_object is None:
+        return default
 
     # Apply validator if provided
     if validator:
         try:
-            if not validator(processed_value):
-                log_warning(f"'{name}' failed validation. Using default.", ctx)
+            if not validator(processed_object):
+                log_warning(
+                    f"'{name}' failed validation. Using default.",
+                    ctx,
+                )
                 return default
         except Exception as e:
             log_warning(
-                f"Validator for '{name}' raised an exception: {e}. Using default.",
-                {
-                    **ctx,
-                    "error": str(e),
-                },
+                f"Validator for '{name}' raised an exception: {e}. "
+                f"Using default object.",
+                {**ctx, "error_details": str(e)},
             )
             return default
 
-    return processed_value
+    return processed_object
+
+
+def ensure_enum(
+    obj: Any,
+    name: str,
+    enum_class: Type[Enum],
+    default: Enum | None = None,
+    context: Dict[str, Any] | None = None,
+) -> Enum | None:
+    """
+    Ensures a value is a valid member of a specified Enum class.
+
+    This function attempts to convert the provided `obj` into a member of the
+    `enum_class`. It tries to match by value and then by name
+    (case-insensitive). If conversion is not possible, a warning is logged, and
+    the specified `default` Enum member is returned.
+
+    Args:
+        obj (Any): The object to be ensured as an Enum member.
+        name (str): The human-readable name for the object, used in log
+            messages.
+        enum_class (Type[Enum]): The Enum class to validate against.
+        default (Enum | None): The default Enum member to return if `obj` cannot
+            be converted or is invalid. Defaults to `None`.
+        context (Dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
+
+    Returns:
+        (Enum): The validated Enum member, or the `default` Enum member.
+    """
+    ctx: dict[str, Any] = {
+        **(context or {}),
+        "param_name": name,
+        "object_attempted": obj,
+        "expected_enum_class": enum_class.__name__,
+    }
+
+    if isinstance(obj, enum_class):
+        return obj
+
+    # Try to convert by value
+    try:
+        return enum_class(obj)
+    except ValueError:
+        pass  # Continue to try by name
+
+    # Try to convert by name (case-insensitive)
+    if isinstance(obj, str):
+        try:
+            return enum_class[obj.upper()]  # Enums are often uppercase
+        except KeyError:
+            pass
+
+    log_warning(
+        f"'{name}' is not a valid member of {enum_class.__name__}. "
+        f"Attempted value: {obj}. Using default.",
+        ctx,
+    )
+    return default
 
 
 def ensure_string(
-    value: Any,
+    obj: Any,
     name: str,
     default: str = "",
     context: dict[str, Any] | None = None,
 ) -> str:
     """
-    Ensures a value is a string, converting it if possible or using a default.
+    Ensures a object is a string, converting it if possible or using a default.
 
-    This function attempts to convert the provided `value` to a string. If the
-    `value` is not already a string, a warning is logged. If conversion is not
-    possible (e.g., `value` is `None` and no default is provided), the specified
-    `default` string is returned.
+    This function attempts to convert the provided `object` to a string. If the
+    `object` is not already a string, a warning is logged. If conversion is not
+    possible (e.g., `object` is `None` and no default is provided), the
+    specified `default` string is returned.
 
     Args:
-        value: The value to be ensured as a string.
-        name: The name of the parameter being processed, used in log messages.
-        default: The default string value to return if `value` cannot be
-        converted or is `None`. Defaults to an empty string.
-        context: An optional dictionary of additional context for logging.
+        obj (Any): The object to be ensured as a string.
+        name (str): The name of the parameter being processed, used in log
+            messages.
+        default (str): The default string object to return if `object` cannot be
+            converted or is `None`. Defaults to an empty string.
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
 
     Returns:
-        The `value` as a string, or the `default` string if conversion fails.
+        (str): The `object` as a string, or the `default` string if conversion
+            fails.
     """
-    if not isinstance(value, str):
+    # Get the type name.
+    actual_type_name = _get_type_display_name(type(obj))
+
+    if not isinstance(obj, str):
         log_warning(
-            f"{name} should be string, got: {type(value).__name__}, converting",
+            f"{name} should be string, got: {actual_type_name}, converting",
             {
                 **(context or {}),
-                "name": name,
-                "value": value,
-                "type": type(value).__name__,
+                "param_name": name,
+                "object_attempted": obj,
+                "actual_type": actual_type_name,
+                "expected_type": "str",
+                "default_object_used": default,
             },
         )
-        return str(value) if value is not None else default
-    return value
+        return str(obj) if obj is not None else default
+    return obj
 
 
 def ensure_non_negative_int(
-    value: Any,
+    obj: Any,
     name: str,
     default: int = 0,
     context: dict[str, Any] | None = None,
 ) -> int:
     """
-    Ensures a value is a non-negative integer, correcting it if necessary.
+    Ensures a object is a non-negative integer, correcting it if necessary.
 
-    This function attempts to convert the provided `value` to an integer and
-    ensures it is not negative. If the `value` is not an integer, is negative,
+    This function attempts to convert the provided `object` to an integer and
+    ensures it is not negative. If the `object` is not an integer, is negative,
     or cannot be converted, a warning is logged, and the specified `default`
-    value is returned or the value is clamped to 0 if it's a negative number.
+    object is returned or the object is clamped to 0 if it's a negative number.
 
     Args:
-        value: The value to be ensured as a non-negative integer.
-        name: The name of the parameter being processed, used in log messages.
-        default: The default integer value to return if `value` is invalid.
-        Defaults to 0.
-        context: An optional dictionary of additional context for logging.
+        obj (Any): The object to be ensured as a non-negative integer.
+        name (str): The name of the parameter being processed, used in log
+            messages.
+        default (int): The default integer object to return if `object` is
+            invalid. Defaults to 0.
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
 
     Returns:
-        The corrected non-negative integer value.
+        (int): The corrected non-negative integer object.
     """
-    if not isinstance(value, int) or value < 0:
+    # Get the type name.
+    actual_type_name = _get_type_display_name(type(obj))
+
+    if not isinstance(obj, int) or obj < 0:
         log_warning(
-            f"{name} must be non-negative integer, got: {value}, "
+            f"{name} must be non-negative integer, got: {obj}, "
             f"correcting to {default}",
             {
                 **(context or {}),
-                "name": name,
-                "value": value,
-                "corrected_to": default,
+                "param_name": name,
+                "object_attempted": obj,
+                "actual_type": actual_type_name,
+                "expected_type": "int",
+                "default_object_used": default,
             },
         )
-        return max(0, int(value) if isinstance(value, (int, float)) else default)
-    return value
+        return max(0, int(obj) if isinstance(obj, (int, float)) else default)
+    return obj
 
 
 def ensure_int_in_range(
-    value: Any,
+    obj: Any,
     name: str,
     min_val: int,
     max_val: int | None = None,
@@ -384,55 +563,65 @@ def ensure_int_in_range(
     context: dict[str, Any] | None = None,
 ) -> int:
     """
-    Ensures a value is an integer within a specified range, correcting it if
+    Ensures a object is an integer within a specified range, correcting it if
     necessary.
 
-    This function attempts to convert the provided `value` to an integer and
+    This function attempts to convert the provided `obj` to an integer and
     checks if it falls within the `min_val` and `max_val` (inclusive). If the
-    `value` is not an integer, is outside the range, or cannot be converted, a
-    warning is logged, and the value is corrected to `min_val`, `max_val`, or
+    `obj` is not an integer, is outside the range, or cannot be converted, a
+    warning is logged, and the object is corrected to `min_val`, `max_val`, or
     the specified `default`.
 
     Args:
-        value: The value to be ensured as an integer within the range.
-        name: The name of the parameter being processed, used in log messages.
-        min_val: The minimum allowed integer value (inclusive).
-        max_val: The maximum allowed integer value (inclusive). If `None`, there
-        is no upper limit.
-        default: The default integer value to return if `value` is invalid or
-        out of range. If `None`, `min_val` is used as the default.
-        context: An optional dictionary of additional context for logging.
+        obj (Any): The object to be ensured as an integer within the range.
+        name (str): The name of the parameter being processed, used in log
+            messages.
+        min_val (int): The minimum allowed integer object (inclusive).
+        max_val (int | None): The maximum allowed integer object (inclusive). If
+            `None`, there is no upper limit.
+        default (int | None): The default integer object to return if `obj` is
+            invalid or out of range. If `None`, `min_val` is used as the
+            default.
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
 
     Returns:
-        The corrected integer value within the specified range.
+        (int): The corrected integer object within the specified range.
     """
+    # Get the type name.
+    actual_type_name = _get_type_display_name(type(obj))
+
     if default is None:
         default = min_val
 
     if (
-        not isinstance(value, int)
-        or value < min_val
-        or (max_val is not None and value > max_val)
+        not isinstance(obj, int)
+        or obj < min_val
+        or (max_val is not None and obj > max_val)
     ):
         range_desc = (
-            f">= {min_val}" if max_val is None else f"between {min_val} and {max_val}"
+            f"greater than {min_val}"
+            if max_val is None
+            else f"between {min_val} and {max_val}"
         )
         log_warning(
-            f"{name} must be integer {range_desc}, got: {value}, "
+            f"{name} must be integer {range_desc}, got: {obj}, "
             f"correcting to {default}",
             {
                 **(context or {}),
-                "name": name,
-                "value": value,
+                "param_name": name,
+                "object_attempted": obj,
+                "actual_type": actual_type_name,
+                "expected_type": "int",
                 "min_val": min_val,
                 "max_val": max_val,
-                "corrected_to": default,
+                "default_object_used": default,
             },
         )
 
         # Try to convert and clamp
         try:
-            converted = int(value) if isinstance(value, (int, float)) else default
+            converted = int(obj) if isinstance(obj, (int, float)) else default
             if converted < min_val:
                 return min_val
             elif max_val is not None and converted > max_val:
@@ -441,212 +630,155 @@ def ensure_int_in_range(
                 return converted
         except (ValueError, TypeError):
             return default
-    return value
-
-
-# Use a helper function for safe type conversion
-def __safe_convert(value: Any, target_type: type) -> Any:
-    try:
-        if target_type is str:
-            return str(value) if value is not None else ""
-        elif target_type is int:
-            return int(value)
-        elif target_type is float:
-            return float(value)
-        else:
-            return None
-    except (ValueError, TypeError):
-        return None
+    return obj
 
 
 def ensure_list_of_type(
-    values: list[Any],
+    values: Any,
     name: str,
-    expected_type: type,
-    default: list[Any] = [],
-    converter: Callable[[Any], Any] | None = None,
+    expected_type: Union[Any, tuple[Any, ...]],
+    default: list[Any] | None = None,
+    context: Dict[str, Any] | None = None,
+    allow_none: bool = False,
     validator: Callable[[Any], bool] | None = None,
-    context: dict[str, Any] | None = None,
+    converter: Callable[[Any], Any] | None = None,
 ) -> list[Any]:
     """
-    Ensures values is a list containing items of a specified type, correcting
-    if needed.
+    Ensures values is a list containing items of a specified type, correcting if
+    needed.
 
-    This function validates that `values` is a list. It then iterates through the
-    list to ensure each item is of `expected_type`. Invalid items are either
+    This function validates that `values` is a list. It then iterates through
+    the list to ensure each item is of `expected_type`. Invalid items are either
     converted using a `converter` function, or a default conversion is attempted
     for common types (str, int, float). Items can also be validated with a
     `validator` function. Warnings are logged for invalid items, but execution
     continues with a cleaned list.
 
     Args:
-        values: The list of values to validate, expected to be a list.
-        expected_type: The `type` that all items in the list should conform to.
-        name: The name of the parameter being processed, used in log messages.
-        default: The default list to return if `values` is `None` or not a list.
-        Defaults to an empty list.
-        converter: An optional callable that takes an item and attempts to
-        convert it to `expected_type`. If conversion fails or returns a wrong
-        type, the item is skipped.
-        validator: An optional callable that takes an item of `expected_type`
-        and returns returns `True` if the item is valid, `False` otherwise.
-        Invalid items are skipped.
-        context: An optional dictionary of additional context for logging.
+        values (Any): The list of values to validate, expected to be a list.
+        name (str): The name of the parameter being processed, used in log
+            messages.
+        expected_type (type): The `type` that all items in the list should
+            conform to.
+        default (list[Any]): The default list to return if `values` is `None` or
+            not a list. Defaults to an empty list.
+        context (dict[str, Any] | None): An optional dictionary of additional
+            context for logging.
+        allow_none (bool): If `True`, `None` values are allowed in the list.
+        validator (Callable[[Any], bool] | None): An optional callable that
+            takes an item of `expected_type` and returns `True` if the item is
+            valid, `False` otherwise.
+        converter (Callable[[Any], Any] | None): An optional callable that takes
+            an item and attempts to convert it to `expected_type`. If conversion
+            fails or returns a wrong type, the item is skipped.
 
     Returns:
-        A new list containing only the valid and/or converted items of `expected_type`.
+        A new list containing only the valid and/or converted items of
+        `expected_type`.
     """
+    # Get the type name.
+    actual_type_name = _get_type_display_name(type(values))
+    # Get the typename of the expected type.
+    expected_type_name = _get_type_display_name(expected_type)
+
+    if default is None:
+        default = []
+
+    if not isinstance(values, list):
+        log_warning(
+            f"{name} should be list, got: {actual_type_name}, using default",
+            {
+                **(context or {}),
+                "param_name": name,
+                "object_attempted": values,
+                "actual_type": actual_type_name,
+                "expected_type": "list",
+                "default_object_used": default,
+            },
+        )
+        return default
+
+    # Make sure the context is valid.
+    ctx: dict[str, Any] = {
+        **(context or {}),
+        "param_name": name,
+        "object_attempted": values,
+        "actual_type": actual_type_name,
+        "expected_type": expected_type_name,
+    }
+
     # Ensure all items are of the expected type
     cleaned_list: list[Any] = []
-    had_invalid_items = False
 
     for i, item in enumerate(values):
         if isinstance(item, expected_type):
             # Item is correct type, now validate if validator is provided
             if validator and not validator(item):
-                had_invalid_items = True
                 log_warning(
                     f"{name}[{i}] failed validation, " f"skipping item: {item}",
                     {
-                        **(context or {}),
-                        "name": name,
+                        **ctx,
                         "index": i,
-                        "item": item,
-                        "expected_type": expected_type.__name__,
+                        "object_attempted": item,
+                        "error_details": "Item failed validation",
                     },
                 )
-                continue  # Skip invalid items
+                # Skip invalid items
+                continue
             else:
                 cleaned_list.append(item)
         else:
-            # Item is wrong type, try to convert
-            had_invalid_items = True
-            if converter:
-                try:
-                    converted_item = converter(item)
-                    if isinstance(converted_item, expected_type):
-                        # Validate converted item if validator is provided
-                        if validator and not validator(converted_item):
-                            log_warning(
-                                f"{name}[{i}] converted item failed validation, "
-                                f"skipping: {converted_item}",
-                                {
-                                    **(context or {}),
-                                    "name": name,
-                                    "index": i,
-                                    "original": item,
-                                    "converted": converted_item,
-                                    "expected_type": expected_type.__name__,
-                                },
-                            )
-                            continue
-                        cleaned_list.append(converted_item)
-                    else:
-                        log_warning(
-                            f"{name}[{i}] converter returned wrong type, "
-                            f"skipping: {item}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "item": item,
-                                "expected_type": expected_type.__name__,
-                                "converter_result_type": type(converted_item).__name__,
-                            },
-                        )
-                except Exception as e:
-                    log_warning(
-                        f"{name}[{i}] conversion failed, skipping item: {item}",
-                        {
-                            **(context or {}),
-                            "name": name,
-                            "index": i,
-                            "item": item,
-                            "error": str(e),
-                        },
-                    )
+            item_ctx: dict[str, Any] = {
+                **ctx,
+                "index": i,
+                "object_attempted": item,
+            }
+            converted = ensure_object(
+                obj=item,
+                name=f"{name}[{i}]",
+                expected_type=expected_type,
+                default=None,
+                context=item_ctx,
+                allow_none=allow_none,
+                converter=converter,
+                validator=validator,
+            )
+            if converted is not None or allow_none:
+                cleaned_list.append(converted)
             else:
-                # No converter provided, use default conversion for common types
-                try:
-                    # Attempt to safely convert the item to the expected type.
-                    converted: Any = __safe_convert(item, expected_type)
-
-                    # We failed to do a safe conversion.
-                    if converted is None:
-                        log_warning(
-                            f"{name}[{i}] wrong type and no converter provided, "
-                            f"skipping: {item}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "item": item,
-                                "expected_type": expected_type.__name__,
-                                "actual_type": type(item).__name__,
-                            },
-                        )
-                        continue
-
-                    # Validate converted item if validator is provided.
-                    if validator and not validator(converted):
-                        log_warning(
-                            f"{name}[{i}] converted item failed validation, "
-                            f"skipping: {converted}",
-                            {
-                                **(context or {}),
-                                "name": name,
-                                "index": i,
-                                "original": item,
-                                "converted": converted,
-                            },
-                        )
-                        continue
-
-                    cleaned_list.append(converted)
-                except (ValueError, TypeError) as e:
-                    log_warning(
-                        f"{name}[{i}] conversion failed, skipping item: {item}",
-                        {
-                            **(context or {}),
-                            "name": name,
-                            "index": i,
-                            "item": item,
-                            "error": str(e),
-                        },
-                    )
-
-    if had_invalid_items:
-        log_warning(
-            f"{name} had invalid items, cleaned list created",
-            {
-                **(context or {}),
-                "name": name,
-                "original_length": len(values),
-                "cleaned_length": len(cleaned_list),
-                "expected_type": expected_type.__name__,
-            },
-        )
+                message = f"Item {name}[{i}] failed validation, "
+                message += f"skipping item: {item}"
+                log_warning(
+                    message,
+                    {
+                        **ctx,
+                        "index": i,
+                        "object_attempted": item,
+                        "error_details": message,
+                    },
+                )
 
     return cleaned_list
 
 
 def safe_get_attribute(obj: Any, name: str, default: Any = None) -> Any:
     """
-    Safely retrieves an attribute from an object, returning a default value if
+    Safely retrieves an attribute from an object, returning a default object if
     not found.
 
     This function attempts to get the attribute named `name` from `obj`. If
     `obj` is `None` or the attribute does not exist, a warning is logged, and
-    the specified `default` value is returned instead.
+    the specified `default` object is returned instead.
 
     Args:
-        obj: The object from which to retrieve the attribute.
-        name: The name of the attribute to retrieve.
-        default: The default value to return if the attribute is not found or
-        `obj` is `None`. Defaults to `None`.
+        obj (Any): The object from which to retrieve the attribute.
+        name (str): The name of the attribute to retrieve.
+        default (Any): The default object to return if the attribute is not
+            found or `obj` is `None`. Defaults to `None`.
 
     Returns:
-        The value of the attribute if found, otherwise the `default` value.
+        (Any): The object of the attribute if found, otherwise the `default`
+            object.
     """
     if obj is None:
         return default
@@ -655,11 +787,14 @@ def safe_get_attribute(obj: Any, name: str, default: Any = None) -> Any:
         return getattr(obj, name)
     else:
         log_warning(
-            f"{type(obj).__name__} missing attribute '{name}', using default: {default}",
+            f"{_get_type_display_name(type(obj))} missing attribute '{name}', "
+            f"using default: {default}",
             {
-                "object_type": type(obj).__name__,
-                "name": name,
-                "default": default,
+                "param_name": name,
+                "object_attempted": obj,
+                "actual_type": _get_type_display_name(type(obj)),
+                "default_object_used": default,
+                "error_details": f"Missing attribute '{name}'",
             },
         )
         return default
