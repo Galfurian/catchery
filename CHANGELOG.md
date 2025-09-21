@@ -1,72 +1,78 @@
 # Changelog
 
+## 0.6.3 - 2025-09-21
+
+- (07589ce) documentation: update changelog format and add copilot instructions
+
 ## 0.6.2 - 2025-08-20
 
-### Features
-
-- Added a mechanism to suppress validation warnings from `ensure` functions.
-
-### Refactor
-
-- Consolidated `_attempt_default_conversion` and `_attempt_conversion` into `_attempt_conversion_with_fallback`.
-- Updated `ensure_object` to use the new conversion function.
-- Improved `_attempt_conversion_with_fallback` to correctly handle tuple expected types.
-- Updated `log_warning` calls in validation functions to include a flag for validation warnings.
+- (7f10e4c) Release 0.6.2
+- (4f2d4c8) chore(release): prepare for version 0.6.2
+- (38260a0) feat(logging): add validation warning suppression
+- (fb65873) refactor(validation): consolidate conversion functions and fix bug
+- (b143f29) refactor(error_handler): improve JSON serialization and fix linting
 
 ## 0.6.1 - 2025-08-19
 
-### Features
+- (9dd8730) Release 0.6.1
+- (fa9102e) chore(release): Release 0.6.1
+- (127c3ec) docs(readme): Refactor Quick Start examples for clarity
 
-- Added `setup_catchery_logging` for simplified configuration.
-- Implemented incremental JSON logging for structured `AppError` objects.
+## 0.6.0 - 2025-08-19
 
-### Refactor
-
-- Renamed `log_file_path` to `text_log_path` and `error_json_log_path` to `json_log_path` for clarity.
-- Refactored error message construction in `re_raise_chained`.
-- Ensured immutability of `AppError` context by deep copying it.
-- Enhanced robustness of JSON logging by using a shared `_safe_json_serialize` utility.
-
-### Documentation
-
-- Revamped `README.md` with comprehensive documentation and refactored Quick Start examples.
+- (0f8ac28) Release 0.6.0
+- (d1e7f06) chore(release): Release 0.6.0
+- (72a45b5) perf(error_handling): Improve AppError context handling and JSON serialization
+- (19c8863) feat(error_handling): Add setup_catchery_logging for simplified configuration
+- (7e2aee7) refactor(error_handling): Rename log parameters and refactor error messages
+- (7e1501e) docs(examples): Add example for file logging
+- (e734ea1) feat(error_handling): Add file logging to ErrorHandler
+- (7a81573) Improve re-raise.
 
 ## 0.5.0 - 2025-08-14
 
-### Features
-
-- Added `re_raise_chained` decorator for robust exception chaining.
+- (c569af3) Release 0.5.0
+- (3ce179d) chore(release): Release 0.5.0
+- (d696d48) feat(error_handling): Add `re_raise_chained` decorator for exception chaining
 
 ## 0.4.0 - 2025-08-14
 
-### Features
-
-- Added `ensure_enum` function for robust Enum member validation and conversion.
+- (50eda71) Release 0.4.0
+- (1faf0c3) chore(release): Prepare for version 0.4.0
+- (7f236c0) feat(validation): Add ensure_enum function with tests and example
+- (f4186a1) Resolve conflicts.
+- (91489c9) refactor(error_handler, validation): improve context management and validation logic
+- (d8fc1ef) refactor(error_handler, validation): improve context management and validation logic
+- (dc29343) refactor(docs, validation, error_handler, examples, tests): improve documentation, refactor validation, and cleanup
+- (8396ce9) refactor(error_handler, tests): rename global handler functions and update tests
+- (3d2ed0d) refactor(validation, error_handler, examples): rename validation function and improve error handling
+- (d89120f) refactor(validation): extract _get_type_display_name for type name formatting
+- (d9c05c4) Simplify the error handler.
+- (5679702) Write a single default converter.
+- (12a6c07) Update version.
+- (092c2ab) Update version.
+- (325239e) docs(changelog): Add CHANGELOG.md and initial versions
+- (2608a87) fix(error_handler): Resolve TypeError and E501 linting issues
 
 ## 0.3.0 - 2025-08-14
 
-### Refactor
-
-- Improved context management and validation logic in error handler and validation modules.
-- Refactored validation and error handling, including renaming global handler functions and validation functions.
-- Extracted `_get_type_display_name` for better type name formatting.
-- Simplified the error handler and introduced a single default converter.
-- Improved type hinting and validation logic across the core.
-
-### Fixed
-
-- Resolved TypeError and E501 linting issues in the error handler.
+- (589bed4) Release 0.3.0
+- (6182b7b) refactor(core): Improve type hinting and validation logic
 
 ## 0.0.2 - 2025-08-12
 
-### Fixed
-
-- Resolved TypeError in `_create_app_error` by ensuring `_get_thread_context` always returns a dictionary.
-- Enhanced `ensure_list_of_type` to correctly handle non-list inputs, logging a warning and returning a default empty list.
-- Updated test assertions in `test_validation.py` to match the revised log messages.
-- Resolved all E501 (line too long) linting errors in `src/catchery/validation.py` by reformatting long lines.
+- (ced5f31) Release 0.2.0
+- (745c6cf) docs(gemini_config): Update commit message example in GEMINI.md
+- (0e2d0f7) feat(validation): Add ensure_value function for robust type validation and conversion
+- (751a510) fix(build): Address setuptools deprecation warnings in pyproject.toml
+- (6bae28e) chore: Remove redundant setup.py; update pyproject.toml with personal info
+- (d360fe4) feat: Setup pyproject.toml with project metadata
+- (ee95277) chore: Update setup.py and GEMINI.md
+- (c7bf8a5) feat: Generate setup.py for package distribution
+- (440c69d) docs(gemini): Enhance GEMINI.md with tool usage and verification guidelines
+- (1b6e365) chore(gemini): Optimize GEMINI.md for Catchery project
+- (4c62799) feat: Initial project setup
 
 ## 0.0.1 - Initial Release
 
-- Initial project setup.
-- Core error handling and validation utilities.
+- (4c62799) feat: Initial project setup
