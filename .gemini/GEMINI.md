@@ -1,4 +1,4 @@
-Project: My Python Project
+# Project: Catchery
 
 General Instructions:
 
@@ -27,12 +27,13 @@ Error Handling:
 
 Project Structure:
 
+- The main Python package is `src/catchery`.
 - Follow the `src/` layout:
 
 ```bash
 project_root/
 ├── src/
-│ └── my_package/
+│ └── catchery/
 ├── tests/
 ├── pyproject.toml
 ├── requirements.txt
@@ -42,12 +43,13 @@ project_root/
 - Keep utility functions in `utils.py` or separate helpers modules.
 - Do not mix test code with production code.
 
-Specific Component: `src/core/config.py`
+Tool Usage for Gemini:
 
-- This file is responsible for loading and validating application configuration.
-- Always validate user input and configuration values.
-- Raise `ValueError` or custom exceptions on invalid config.
-- Include type hints and unit tests for any new configuration features.
+- When searching for code, prioritize `src/catchery/` and `tests/` directories.
+- Use `search_file_content` with specific patterns for finding functions, classes, or variables.
+- Use `glob` for locating files by name or extension (e.g., `**/*.py`).
+- Use `read_file` for detailed content review of individual files.
+- Use `read_many_files` when context from multiple files is needed (e.g., understanding a module).
 
 Regarding Dependencies:
 
@@ -58,18 +60,22 @@ Regarding Dependencies:
 - Add the package to `requirements.txt` and lock file if used.
 - Update related documentation or usage examples.
 
-Testing:
+Testing and Verification:
 
 - Use `pytest` as the test runner.
 - Name test files with `test_*.py`.
 - Each test function should cover one logical case.
-- Use `mypy` to check types; use `coverage` or `pytest-cov` to measure test coverage.
+- After making changes, always run:
+  - `pytest` for unit and integration tests.
+  - `mypy src/catchery/` for type checking.
+  - `ruff check src/catchery/` for linting (if `ruff` is installed and configured).
+- Use `coverage` or `pytest-cov` to measure test coverage.
 
 Commits:
 
 - Use the Conventional Commits format: `<type>(scope): short summary`
 Examples:
-- `feat(config): support dynamic environment loading`
+- `feature(config): support dynamic environment loading`
 - `fix(core): handle missing config file gracefully`
 - `test(utils): add unit tests for retry logic`
 
